@@ -1,0 +1,244 @@
+﻿namespace WebVella.Database;
+
+/// <summary>
+/// Represents a context for managing the lifecycle of database connections and transactions,
+/// including nested connections and transactional state.
+/// </summary>
+internal class DbConnectionContext : IDisposable, IAsyncDisposable
+{
+	private static readonly AsyncLocal<string?> _currentCtxId = new();
+	private static readonly ConcurrentDictionary<string, DbConnectionContext> _contextDict = new();
+
+	private bool _disposed = false;
+	internal Stack<DbConnection> _connectionStack;
+	internal NpgsqlTransaction? _transaction;
+	internal string _connectionString;
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DbConnectionContext"/> class
+	/// with the specified connection string.
+	/// </summary>
+	/// <param name="connectionString">The connection string for the database.</param>
+	private DbConnectionContext(string connectionString)
+	{
+		_connectionString = connectionString;
+		_connectionStack = new Stack<DbConnection>();
+	}
+
+	/// <summary>
+	/// Creates a new <see cref="DbConnection"/> within the current context.
+	/// </summary>
+	/// <returns>A new <see cref="DbConnection"/> instance.</returns>
+	internal DbConnection CreateConnection()
+	{
+		DbConnection con;
+
+		if (_transaction != null)
+			con = new DbConnection(_transaction, this);
+		else
+			con = new DbConnection(_connectionString, this);
+
+		_connectionStack.Push(con);
+
+		return con;
+	}
+
+	/// <summary>
+	/// Asynchronously creates a new <see cref="DbConnection"/> within the current context.
+	/// </summary>
+	/// <returns>
+	/// A task that represents the asynchronous operation.
+	/// The task result contains a new <see cref="DbConnection"/> instance.
+	/// </returns>
+	internal async Task<DbConnection> CreateConnectionAsync()
+	{
+		DbConnection con;
+
+		if (_transaction != null)
+			con = new DbConnection(_transaction, this);
+		else
+			con = await DbConnection.CreateAsync(_connectionString, this);
+
+		_connectionStack.Push(con);
+
+		return con;
+	}
+
+	/// <summary>
+	/// Closes the specified database connection.
+	/// </summary>
+	/// <param name="connection">The connection to close.</param>
+	/// <returns><c>true</c> if all connections are closed; otherwise, <c>false</c>.</returns>
+	/// <exception cref="InvalidOperationException">
+	/// Thrown if the connection is not the most recently opened connection.
+	/// </exception>
+	internal bool CloseConnection(DbConnection connection)
+	{
+		if (connection != _connectionStack.Peek())
+		{
+			throw new InvalidOperationException("Connection is closed or trying to" +
+				" close connection, before closing inner connections.");
+		}
+
+		_connectionStack.Pop();
+
+		return _connectionStack.Count == 0;
+	}
+
+    /// <summary>
+    /// Enters a transactional state using the specified transaction.
+    /// </summary>
+    /// <param name="transaction">The <see cref="NpgsqlTransaction"/> to use.</param>
+	internal void EnterTransactionalState(NpgsqlTransaction transaction)
+	{
+		this._transaction = transaction;
+	}
+
+    /// <summary>
+    /// Leaves the transactional state and clears the current transaction.
+    /// </summary>
+	internal void LeaveTransactionalState()
+	{
+		this._transaction = null;
+	}
+
+	/// <summary>
+	/// Creates a new <see cref="DbConnectionContext"/> with the specified connection string.
+	/// </summary>
+	/// <param name="connectionString">The connection string for the database.</param>
+	/// <returns>A new instance of <see cref="DbConnectionContext"/>.</returns>
+	/// <exception cref="Exception">Thrown if the context cannot be created or retrieved.</exception>
+	internal static DbConnectionContext CreateContext(string connectionString)
+	{
+		_currentCtxId.Value = Guid.NewGuid().ToString();
+
+		if (!_contextDict.TryAdd(
+				_currentCtxId.Value,
+				new DbConnectionContext(connectionString)))
+		{
+			throw new InvalidOperationException("Cannot create new connection context");
+		}
+
+		if (!_contextDict.TryGetValue(
+				_currentCtxId.Value,
+				out DbConnectionContext? ctx))
+		{
+			throw new InvalidOperationException("Failed to get the connection context");
+		}
+
+		return ctx;
+	}
+
+	/// <summary>
+	/// Gets the current connection context.
+	/// </summary>
+	/// <returns>The current <see cref="DbConnectionContext"/>, or null if no context exists.</returns>
+	internal static DbConnectionContext? GetCurrentContext()
+	{
+		if (string.IsNullOrWhiteSpace(_currentCtxId.Value))
+		{
+			return null;
+		}
+
+		_contextDict.TryGetValue(_currentCtxId.Value, out DbConnectionContext? ctx);
+
+		return ctx;
+	}
+
+	/// <summary>
+	/// Closes the current connection context, rolling back any active transactions.
+	/// </summary>
+	/// <exception cref="Exception">Thrown if there is an open transaction when attempting to close the context.</exception>
+	internal static void CloseConnectionContext()
+	{
+		var currentCtx = GetCurrentContext();
+
+		if (currentCtx != null && currentCtx._transaction != null)
+		{
+			currentCtx._transaction.Rollback();
+			throw new InvalidOperationException("Trying to release connection context in " +
+				"transactional state. There is open transaction in created connections.");
+		}
+
+		var idValue = _currentCtxId.Value;
+
+		if (!string.IsNullOrWhiteSpace(idValue))
+		{
+			_contextDict.TryRemove(idValue, out DbConnectionContext? ctx);
+			ctx?.Dispose();
+			_currentCtxId.Value = null;
+		}
+	}
+
+	/// <summary>
+	/// Asynchronously closes the current connection context, rolling back any active transactions.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">
+	/// Thrown if there is an open transaction when attempting to close the context.
+	/// </exception>
+	internal static async Task CloseConnectionContextAsync()
+	{
+		var currentCtx = GetCurrentContext();
+
+		if (currentCtx != null && currentCtx._transaction != null)
+		{
+			await currentCtx._transaction.RollbackAsync();
+			throw new InvalidOperationException("Trying to release connection context in " +
+				"transactional state. There is open transaction in created connections.");
+		}
+
+		var idValue = _currentCtxId.Value;
+
+		if (!string.IsNullOrWhiteSpace(idValue))
+		{
+			_contextDict.TryRemove(idValue, out DbConnectionContext? ctx);
+			if (ctx != null)
+			{
+				await ctx.DisposeAsync();
+			}
+			_currentCtxId.Value = null;
+		}
+	}
+
+	/// <summary>
+	/// Releases all resources used by the <see cref="DbConnectionContext"/>.
+	/// </summary>
+	public void Dispose()
+	{
+		Dispose(true);
+		GC.SuppressFinalize(this);
+	}
+
+	/// <summary>
+	/// Releases the unmanaged and optionally managed resources used by the <see cref="DbConnectionContext"/>.
+	/// </summary>
+	/// <param name="disposing">
+	/// True to release both managed and unmanaged resources; false to release only unmanaged resources.
+	/// </param>
+	private void Dispose(bool disposing)
+	{
+		if (_disposed)
+			return;
+
+		_disposed = true;
+
+		if (disposing)
+		{
+			CloseConnectionContext();
+		}
+	}
+
+	/// <summary>
+	/// Asynchronously releases all resources used by the <see cref="DbConnectionContext"/>.
+	/// </summary>
+	public async ValueTask DisposeAsync()
+	{
+		if (_disposed)
+			return;
+
+		_disposed = true;
+
+		await CloseConnectionContextAsync();
+		GC.SuppressFinalize(this);
+	}
+}

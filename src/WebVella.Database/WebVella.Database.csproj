@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
+		<AssemblyName>WebVella.Database</AssemblyName>
+		<OutputType>Library</OutputType>
+		<PackageId>$(AssemblyName)</PackageId>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+		<Description>A lightweight, high-performance Postgres data access library built on Dapper. It simplifies data object mapping and complex database workflows by providing first-class support for nested transactions and effortless advisory lock management.</Description>
+		<Version>1.0.0</Version>
+		<Authors>WebVella</Authors>
+		<Company>WebVella</Company>
+		<Copyright>WebVella 2026</Copyright>
+		<PackageProjectUrl>https://github.com/WebVella/WebVella.Database</PackageProjectUrl>
+		<Icon>https://webvella.com/favicon.ico</Icon>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/WebVella/WebVella.Database</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+		<Title>WebVella.Npgsql.Extensions</Title>
+		<PackageTags>postgres,dapper,transactions,transaction scope,nested transactions,advisory lock</PackageTags>
+		<PackageReleaseNotes>Initial release</PackageReleaseNotes>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		
+	</PropertyGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="WebVella.Database.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.72" />
+		<PackageReference Include="Npgsql" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\..\LICENSE">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+
+</Project>

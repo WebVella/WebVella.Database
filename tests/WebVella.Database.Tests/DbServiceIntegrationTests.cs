@@ -1,0 +1,2151 @@
+using FluentAssertions;
+using WebVella.Database.Tests.Fixtures;
+using WebVella.Database.Tests.Models;
+using Xunit;
+
+namespace WebVella.Database.Tests;
+
+/// <summary>
+/// Integration tests for <see cref="DbService"/> using a real PostgreSQL database.
+/// </summary>
+[Collection("Database")]
+public class DbServiceIntegrationTests : IAsyncLifetime
+{
+	private readonly DatabaseFixture _fixture;
+	private readonly IDbService _dbService;
+
+	public DbServiceIntegrationTests(DatabaseFixture fixture)
+	{
+		_fixture = fixture;
+		_dbService = fixture.DbService;
+	}
+
+	public Task InitializeAsync() => _fixture.ClearTestProductsAsync();
+
+	public Task DisposeAsync() => Task.CompletedTask;
+
+	#region <=== InsertAsync Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_ShouldInsertEntityAndReturnId()
+	{
+		var product = new TestProduct
+		{
+			Name = "Test Product",
+			Description = "A test product description",
+			Price = 19.99m,
+			Quantity = 100,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullDescription_ShouldInsertSuccessfully()
+	{
+		var product = new TestProduct
+		{
+			Name = "Product Without Description",
+			Description = null,
+			Price = 9.99m,
+			Quantity = 50,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Description.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithZeroValues_ShouldInsertSuccessfully()
+	{
+		var product = new TestProduct
+		{
+			Name = "Zero Values Product",
+			Price = 0m,
+			Quantity = 0,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Price.Should().Be(0m);
+		retrieved.Quantity.Should().Be(0);
+		retrieved.IsActive.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithSpecialCharactersInName_ShouldInsertSuccessfully()
+	{
+		var product = new TestProduct
+		{
+			Name = "Test's \"Special\" <Product> & More",
+			Description = "Description with 'quotes' and \"double quotes\"",
+			Price = 19.99m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Test's \"Special\" <Product> & More");
+	}
+
+	[Fact]
+	public async Task MultipleInserts_ShouldGenerateUniqueIds()
+	{
+		var products = Enumerable.Range(1, 5)
+			.Select(i => new TestProduct
+			{
+				Name = $"Sequential Product {i}",
+				Price = i * 10.00m,
+				Quantity = i * 5,
+				IsActive = true,
+				CreatedAt = DateTime.UtcNow
+			})
+			.ToList();
+
+		var ids = new List<Guid>();
+		foreach (var product in products)
+		{
+			var keys = await _dbService.InsertAsync(product);
+			ids.Add(keys["Id"]);
+		}
+
+		ids.Should().HaveCount(5);
+		ids.Should().OnlyHaveUniqueItems();
+		ids.Should().NotContain(Guid.Empty);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithEmptyGuidKey_ShouldAutoGenerateNewGuid()
+	{
+		var product = new TestProduct
+		{
+			Id = Guid.Empty,
+			Name = "Auto Generate Key Test",
+			Price = 25.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+		product.Id.Should().NotBe(Guid.Empty);
+		product.Id.Should().Be(id);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Auto Generate Key Test");
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithPresetGuidKey_ShouldUseProvidedGuid()
+	{
+		var presetId = Guid.NewGuid();
+		var product = new TestProduct
+		{
+			Id = presetId,
+			Name = "Preset Key Test",
+			Price = 30.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().Be(presetId);
+		product.Id.Should().Be(presetId);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Id.Should().Be(presetId);
+	}
+
+	#endregion
+
+	#region <=== GetAsync Tests ===>
+
+	[Fact]
+	public async Task GetAsync_ShouldReturnInsertedEntity()
+	{
+		var product = new TestProduct
+		{
+			Name = "Get Test Product",
+			Description = "Description for get test",
+			Price = 29.99m,
+			Quantity = 50,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrievedProduct = await _dbService.GetAsync<TestProduct>(id);
+
+		retrievedProduct.Should().NotBeNull();
+		retrievedProduct!.Id.Should().Be(id);
+		retrievedProduct.Name.Should().Be("Get Test Product");
+		retrievedProduct.Price.Should().Be(29.99m);
+	}
+
+	[Fact]
+	public async Task GetAsync_WithNonExistentId_ShouldReturnNull()
+	{
+		var product = await _dbService.GetAsync<TestProduct>(Guid.NewGuid());
+
+		product.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task GetAsync_WithEmptyGuid_ShouldReturnNull()
+	{
+		var product = await _dbService.GetAsync<TestProduct>(Guid.Empty);
+
+		product.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task GetAsync_ShouldReturnAllProperties()
+	{
+		var now = DateTime.Now;
+		var product = new TestProduct
+		{
+			Name = "Full Property Test",
+			Description = "Full description",
+			Price = 99.99m,
+			Quantity = 100,
+			IsActive = true,
+			CreatedAt = now,
+			UpdatedAt = now
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Id.Should().Be(id);
+		retrieved.Name.Should().Be("Full Property Test");
+		retrieved.Description.Should().Be("Full description");
+		retrieved.Price.Should().Be(99.99m);
+		retrieved.Quantity.Should().Be(100);
+		retrieved.IsActive.Should().BeTrue();
+		retrieved.CreatedAt.Should().BeCloseTo(now, TimeSpan.FromSeconds(1));
+		retrieved.UpdatedAt.Should().BeCloseTo(now, TimeSpan.FromSeconds(1));
+	}
+
+	#endregion
+
+	#region <=== GetListAsync Tests ===>
+
+	[Fact]
+	public async Task GetListAsync_WithNullIds_ShouldReturnAllEntities()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "All Product 1",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "All Product 2",
+			Price = 20.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		await _dbService.InsertAsync(product1);
+		await _dbService.InsertAsync(product2);
+
+		var allProducts = await _dbService.GetListAsync<TestProduct>();
+
+		allProducts.Should().HaveCount(2);
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithNoEntities_ShouldReturnEmptyCollection()
+	{
+		var allProducts = await _dbService.GetListAsync<TestProduct>();
+
+		allProducts.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithSpecificIds_ShouldReturnOnlyMatchingEntities()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "Product 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "Product 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product3 = new TestProduct
+		{
+			Name = "Product 3",
+			Price = 30.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys1 = await _dbService.InsertAsync(product1);
+		var keys2 = await _dbService.InsertAsync(product2);
+		await _dbService.InsertAsync(product3);
+
+		var ids = new List<Guid> { keys1["Id"], keys2["Id"] };
+		var products = await _dbService.GetListAsync<TestProduct>(ids);
+
+		products.Should().HaveCount(2);
+		products.Select(p => p.Name).Should().Contain("Product 1", "Product 2");
+		products.Select(p => p.Name).Should().NotContain("Product 3");
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithEmptyIdsList_ShouldReturnEmptyCollection()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Some Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var products = await _dbService.GetListAsync<TestProduct>(new List<Guid>());
+
+		products.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithNonExistentIds_ShouldReturnEmptyCollection()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Existing Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var nonExistentIds = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
+		var products = await _dbService.GetListAsync<TestProduct>(nonExistentIds);
+
+		products.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithMixedExistentAndNonExistentIds_ShouldReturnOnlyExisting()
+	{
+		var product = new TestProduct
+		{
+			Name = "Existing Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var existingId = keys["Id"];
+
+		var mixedIds = new List<Guid> { existingId, Guid.NewGuid(), Guid.NewGuid() };
+		var products = await _dbService.GetListAsync<TestProduct>(mixedIds);
+
+		products.Should().HaveCount(1);
+		products.First().Id.Should().Be(existingId);
+	}
+
+	[Fact]
+	public async Task GetListAsync_ShouldReturnEntitiesInInsertionOrder()
+	{
+		var products = Enumerable.Range(1, 3)
+			.Select(i => new TestProduct
+			{
+				Name = $"Ordered Product {i}",
+				Price = i * 10.00m,
+				Quantity = i,
+				IsActive = true,
+				CreatedAt = DateTime.UtcNow
+			})
+			.ToList();
+
+		foreach (var product in products)
+		{
+			await _dbService.InsertAsync(product);
+		}
+
+		var allProducts = await _dbService.GetListAsync<TestProduct>();
+
+		allProducts.Should().HaveCount(3);
+		allProducts.Select(p => p.Name).Should().ContainInOrder(
+			"Ordered Product 1", "Ordered Product 2", "Ordered Product 3");
+	}
+
+	#endregion
+
+	#region <=== QueryAsync Tests ===>
+
+	[Fact]
+	public async Task QueryAsync_ShouldReturnMatchingEntities()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "Query Product 1",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "Query Product 2",
+			Price = 20.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product3 = new TestProduct
+		{
+			Name = "Query Product 3",
+			Price = 30.00m,
+			Quantity = 15,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		await _dbService.InsertAsync(product1);
+		await _dbService.InsertAsync(product2);
+		await _dbService.InsertAsync(product3);
+
+		var activeProducts = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE is_active = @IsActive",
+			new { IsActive = true });
+
+		activeProducts.Should().HaveCount(2);
+		activeProducts.Should().OnlyContain(p => p.IsActive);
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithNoMatches_ShouldReturnEmptyCollection()
+	{
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE price > @MinPrice",
+			new { MinPrice = 1000000m });
+
+		products.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithMultipleParameters_ShouldFilterCorrectly()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Cheap Active",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Expensive Active",
+			Price = 100.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Cheap Inactive",
+			Price = 10.00m,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE is_active = @IsActive AND price < @MaxPrice",
+			new { IsActive = true, MaxPrice = 50.00m });
+
+		products.Should().HaveCount(1);
+		products.First().Name.Should().Be("Cheap Active");
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithLikePattern_ShouldMatchPartialNames()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Apple iPhone",
+			Price = 999.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Apple iPad",
+			Price = 799.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Samsung Galaxy",
+			Price = 899.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE name LIKE @Pattern",
+			new { Pattern = "Apple%" });
+
+		products.Should().HaveCount(2);
+		products.Should().OnlyContain(p => p.Name.StartsWith("Apple"));
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithOrderBy_ShouldReturnOrderedResults()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "B Product",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "A Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "C Product",
+			Price = 30.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products ORDER BY name ASC");
+
+		products.Should().HaveCount(3);
+		products.Select(p => p.Name).Should().BeInAscendingOrder();
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithNullParameter_ShouldWork()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "With Description",
+			Description = "Some desc",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Without Description",
+			Description = null,
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE description IS NULL");
+
+		products.Should().HaveCount(1);
+		products.First().Name.Should().Be("Without Description");
+	}
+
+	#endregion
+
+	#region <=== UpdateAsync Tests ===>
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateEntity()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original Name",
+			Price = 15.00m,
+			Quantity = 25,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated Name";
+		product.Price = 25.00m;
+		product.UpdatedAt = DateTime.UtcNow;
+		var updated = await _dbService.UpdateAsync(product);
+
+		updated.Should().BeTrue();
+
+		var updatedProduct = await _dbService.GetAsync<TestProduct>(id);
+		updatedProduct.Should().NotBeNull();
+		updatedProduct!.Name.Should().Be("Updated Name");
+		updatedProduct.Price.Should().Be(25.00m);
+		updatedProduct.UpdatedAt.Should().NotBeNull();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithNonExistentId_ShouldReturnFalse()
+	{
+		var product = new TestProduct
+		{
+			Id = Guid.NewGuid(),
+			Name = "Non-existent Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var updated = await _dbService.UpdateAsync(product);
+
+		updated.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldOnlyUpdateSpecifiedEntity()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "Product 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "Product 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys1 = await _dbService.InsertAsync(product1);
+		var keys2 = await _dbService.InsertAsync(product2);
+		var id1 = keys1["Id"];
+		var id2 = keys2["Id"];
+
+		product1.Id = id1;
+		product1.Name = "Updated Product 1";
+
+		await _dbService.UpdateAsync(product1);
+
+		var retrieved1 = await _dbService.GetAsync<TestProduct>(id1);
+		var retrieved2 = await _dbService.GetAsync<TestProduct>(id2);
+
+		retrieved1!.Name.Should().Be("Updated Product 1");
+		retrieved2!.Name.Should().Be("Product 2");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithAllFieldsChanged_ShouldUpdateAllFields()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Description = "Original Desc",
+			Price = 10.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated";
+		product.Description = "Updated Desc";
+		product.Price = 99.99m;
+		product.Quantity = 999;
+		product.IsActive = false;
+		product.UpdatedAt = DateTime.UtcNow;
+
+		var updated = await _dbService.UpdateAsync(product);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("Updated");
+		retrieved.Description.Should().Be("Updated Desc");
+		retrieved.Price.Should().Be(99.99m);
+		retrieved.Quantity.Should().Be(999);
+		retrieved.IsActive.Should().BeFalse();
+		retrieved.UpdatedAt.Should().NotBeNull();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithSpecificPropertyNames_ShouldUpdateOnlyThoseProperties()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original Name",
+			Description = "Original Description",
+			Price = 50.00m,
+			Quantity = 100,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated Name";
+		product.Description = "Updated Description";
+		product.Price = 999.99m;
+		product.Quantity = 999;
+
+		var updated = await _dbService.UpdateAsync(product, ["Name", "Price"]);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("Updated Name");
+		retrieved.Description.Should().Be("Original Description");
+		retrieved.Price.Should().Be(999.99m);
+		retrieved.Quantity.Should().Be(100);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithSinglePropertyName_ShouldUpdateOnlyThatProperty()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Price = 25.00m,
+			Quantity = 50,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "New Name";
+		product.Price = 999.99m;
+
+		var updated = await _dbService.UpdateAsync(product, ["Name"]);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("New Name");
+		retrieved.Price.Should().Be(25.00m);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithCaseInsensitivePropertyNames_ShouldWork()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated";
+		product.Price = 99.99m;
+
+		var updated = await _dbService.UpdateAsync(product, ["name", "PRICE"]);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("Updated");
+		retrieved.Price.Should().Be(99.99m);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithInvalidPropertyName_ShouldThrowArgumentException()
+	{
+		var product = new TestProduct
+		{
+			Name = "Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		product.Id = keys["Id"];
+
+		var act = async () => await _dbService.UpdateAsync(product, ["InvalidProperty"]);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Invalid property names*InvalidProperty*");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithNullPropertyNames_ShouldUpdateAllProperties()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Description = "Original Desc",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated";
+		product.Description = "Updated Desc";
+		product.Price = 99.99m;
+
+		var updated = await _dbService.UpdateAsync(product);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("Updated");
+		retrieved.Description.Should().Be("Updated Desc");
+		retrieved.Price.Should().Be(99.99m);
+	}
+
+	#endregion
+
+	#region <=== DeleteAsync Tests ===>
+
+	[Fact]
+	public async Task DeleteAsync_ShouldDeleteEntity()
+	{
+		var product = new TestProduct
+		{
+			Name = "Product To Delete",
+			Price = 5.00m,
+			Quantity = 1,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var deleted = await _dbService.DeleteAsync(product);
+
+		deleted.Should().BeTrue();
+
+		var deletedProduct = await _dbService.GetAsync<TestProduct>(id);
+		deletedProduct.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task DeleteAsync_WithNonExistentId_ShouldReturnFalse()
+	{
+		var product = new TestProduct
+		{
+			Id = Guid.NewGuid(),
+			Name = "Non-existent Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var deleted = await _dbService.DeleteAsync(product);
+
+		deleted.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task DeleteAsync_ShouldOnlyDeleteSpecifiedEntity()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "Keep Me",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "Delete Me",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys1 = await _dbService.InsertAsync(product1);
+		var keys2 = await _dbService.InsertAsync(product2);
+		var id1 = keys1["Id"];
+		var id2 = keys2["Id"];
+
+		product2.Id = id2;
+
+		await _dbService.DeleteAsync(product2);
+
+		var retrieved1 = await _dbService.GetAsync<TestProduct>(id1);
+		var retrieved2 = await _dbService.GetAsync<TestProduct>(id2);
+
+		retrieved1.Should().NotBeNull();
+		retrieved2.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task DeleteAsync_MultipleTimes_ShouldReturnFalseOnSecondAttempt()
+	{
+		var product = new TestProduct
+		{
+			Name = "Double Delete",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var firstDelete = await _dbService.DeleteAsync(product);
+		var secondDelete = await _dbService.DeleteAsync(product);
+
+		firstDelete.Should().BeTrue();
+		secondDelete.Should().BeFalse();
+	}
+
+	#endregion
+
+	#region <=== ExecuteAsync Tests ===>
+
+	[Fact]
+	public async Task ExecuteAsync_ShouldExecuteCommandAndReturnAffectedRows()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "Execute Product 1",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var product2 = new TestProduct
+		{
+			Name = "Execute Product 2",
+			Price = 20.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		await _dbService.InsertAsync(product1);
+		await _dbService.InsertAsync(product2);
+
+		var affectedRows = await _dbService.ExecuteAsync(
+			"UPDATE test_products SET is_active = @IsActive WHERE price > @MinPrice",
+			new { IsActive = false, MinPrice = 15.00m });
+
+		affectedRows.Should().Be(1);
+
+		var inactiveProducts = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE is_active = @IsActive",
+			new { IsActive = false });
+		inactiveProducts.Should().HaveCount(1);
+		inactiveProducts.First().Name.Should().Be("Execute Product 2");
+	}
+
+	[Fact]
+	public async Task ExecuteAsync_WithNoMatchingRows_ShouldReturnZero()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var affectedRows = await _dbService.ExecuteAsync(
+			"UPDATE test_products SET is_active = @IsActive WHERE price > @MinPrice",
+			new { IsActive = false, MinPrice = 1000.00m });
+
+		affectedRows.Should().Be(0);
+	}
+
+	[Fact]
+	public async Task ExecuteAsync_DeleteStatement_ShouldDeleteMatchingRows()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Cheap",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Expensive",
+			Price = 100.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var affectedRows = await _dbService.ExecuteAsync(
+			"DELETE FROM test_products WHERE price < @MaxPrice",
+			new { MaxPrice = 50.00m });
+
+		affectedRows.Should().Be(1);
+
+		var remaining = await _dbService.GetListAsync<TestProduct>();
+		remaining.Should().HaveCount(1);
+		remaining.First().Name.Should().Be("Expensive");
+	}
+
+	[Fact]
+	public async Task ExecuteAsync_WithoutParameters_ShouldWork()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Test 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Test 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var affectedRows = await _dbService.ExecuteAsync("DELETE FROM test_products");
+
+		affectedRows.Should().Be(2);
+
+		var remaining = await _dbService.GetListAsync<TestProduct>();
+		remaining.Should().BeEmpty();
+	}
+
+	#endregion
+
+	#region <=== Transaction Tests ===>
+
+	[Fact]
+	public async Task CreateTransactionScopeAsync_ShouldCommitChanges()
+	{
+		await using (var scope = await _dbService.CreateTransactionScopeAsync())
+		{
+			var product = new TestProduct
+			{
+				Name = "Transaction Product",
+				Price = 50.00m,
+				Quantity = 100,
+				IsActive = true,
+				CreatedAt = DateTime.UtcNow
+			};
+
+			await _dbService.InsertAsync(product);
+			await scope.CompleteAsync();
+		}
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE name = @Name",
+			new { Name = "Transaction Product" });
+
+		products.Should().HaveCount(1);
+	}
+
+	[Fact]
+	public async Task CreateTransactionScopeAsync_WithStringLockKey_ShouldWork()
+	{
+		await using (var scope = await _dbService.CreateTransactionScopeAsync("test-lock-key"))
+		{
+			var product = new TestProduct
+			{
+				Name = "String Lock Product",
+				Price = 75.00m,
+				Quantity = 200,
+				IsActive = true,
+				CreatedAt = DateTime.UtcNow
+			};
+
+			await _dbService.InsertAsync(product);
+			await scope.CompleteAsync();
+		}
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE name = @Name",
+			new { Name = "String Lock Product" });
+
+		products.Should().HaveCount(1);
+	}
+
+	#endregion
+
+	#region <=== Edge Cases ===>
+
+	[Fact]
+	public async Task InsertAndUpdate_RapidSuccession_ShouldWorkCorrectly()
+	{
+		var product = new TestProduct
+		{
+			Name = "Rapid Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		for (int i = 1; i <= 5; i++)
+		{
+			product.Name = $"Rapid Test {i}";
+			product.Price = i * 10.00m;
+			await _dbService.UpdateAsync(product);
+		}
+
+		var final = await _dbService.GetAsync<TestProduct>(id);
+		final!.Name.Should().Be("Rapid Test 5");
+		final.Price.Should().Be(50.00m);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithLargeDecimalPrecision_ShouldMaintainPrecision()
+	{
+		var product = new TestProduct
+		{
+			Name = "Precision Test",
+			Price = 12345.67m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved!.Price.Should().Be(12345.67m);
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithEmptyTable_ShouldReturnEmptyCollection()
+	{
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products");
+
+		products.Should().BeEmpty();
+	}
+
+	#endregion
+
+	#region <=== Enum Property Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithEnumProperty_ShouldPersistEnumValue()
+	{
+		var product = new TestProduct
+		{
+			Name = "Enum Test Product",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			Status = ProductStatus.Active,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Status.Should().Be(ProductStatus.Active);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithDefaultEnumValue_ShouldPersistDraft()
+	{
+		var product = new TestProduct
+		{
+			Name = "Default Enum Product",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Status.Should().Be(ProductStatus.Draft);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithAllEnumValues_ShouldPersistCorrectly()
+	{
+		var statuses = new[] 
+		{ 
+			ProductStatus.Draft, 
+			ProductStatus.Active, 
+			ProductStatus.Discontinued, 
+			ProductStatus.OutOfStock 
+		};
+
+		foreach (var status in statuses)
+		{
+			var product = new TestProduct
+			{
+				Name = $"Product with {status}",
+				Price = 10.00m,
+				Quantity = 5,
+				IsActive = true,
+				Status = status,
+				CreatedAt = DateTime.UtcNow
+			};
+
+			var keys = await _dbService.InsertAsync(product);
+			var id = keys["Id"];
+
+			var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+			retrieved.Should().NotBeNull();
+			retrieved!.Status.Should().Be(status);
+		}
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateEnumProperty()
+	{
+		var product = new TestProduct
+		{
+			Name = "Enum Update Test",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			Status = ProductStatus.Draft,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Status = ProductStatus.Active;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Status.Should().Be(ProductStatus.Active);
+
+		product.Status = ProductStatus.Discontinued;
+		await _dbService.UpdateAsync(product);
+
+		retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Status.Should().Be(ProductStatus.Discontinued);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithPropertyNamesUpdateOnly_ShouldUpdateOnlyEnumProperty()
+	{
+		var product = new TestProduct
+		{
+			Name = "Partial Enum Update Test",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			Status = ProductStatus.Draft,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Changed Name";
+		product.Status = ProductStatus.Active;
+		await _dbService.UpdateAsync(product, ["Status"]);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.Name.Should().Be("Partial Enum Update Test");
+		retrieved.Status.Should().Be(ProductStatus.Active);
+	}
+
+	[Fact]
+	public async Task QueryAsync_ShouldFilterByEnumValue()
+	{
+		var activeProduct = new TestProduct
+		{
+			Name = "Active Product",
+			Price = 10.00m,
+			Status = ProductStatus.Active,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var discontinuedProduct = new TestProduct
+		{
+			Name = "Discontinued Product",
+			Price = 20.00m,
+			Status = ProductStatus.Discontinued,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		await _dbService.InsertAsync(activeProduct);
+		await _dbService.InsertAsync(discontinuedProduct);
+
+		var activeProducts = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE status = @Status",
+			new { Status = (int)ProductStatus.Active });
+
+		activeProducts.Should().HaveCount(1);
+		activeProducts.First().Name.Should().Be("Active Product");
+	}
+
+	#endregion
+
+	#region <=== DateOnly Property Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithDateOnlyProperty_ShouldPersistDateValue()
+	{
+		var releaseDate = new DateOnly(2024, 6, 15);
+		var product = new TestProduct
+		{
+			Name = "DateOnly Test Product",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = releaseDate,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.ReleaseDate.Should().Be(releaseDate);
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullableDateOnly_ShouldPersistNull()
+	{
+		var product = new TestProduct
+		{
+			Name = "Nullable DateOnly Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			DiscontinuedDate = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.DiscontinuedDate.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullableDateOnly_ShouldPersistValue()
+	{
+		var discontinuedDate = new DateOnly(2025, 12, 31);
+		var product = new TestProduct
+		{
+			Name = "Nullable DateOnly With Value",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			DiscontinuedDate = discontinuedDate,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.DiscontinuedDate.Should().Be(discontinuedDate);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateDateOnlyProperty()
+	{
+		var originalDate = new DateOnly(2024, 1, 1);
+		var product = new TestProduct
+		{
+			Name = "DateOnly Update Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = originalDate,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var newDate = new DateOnly(2024, 12, 25);
+		product.ReleaseDate = newDate;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.ReleaseDate.Should().Be(newDate);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateNullableDateOnlyFromNullToValue()
+	{
+		var product = new TestProduct
+		{
+			Name = "Nullable DateOnly Update Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			DiscontinuedDate = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var discontinuedDate = new DateOnly(2025, 6, 30);
+		product.DiscontinuedDate = discontinuedDate;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.DiscontinuedDate.Should().Be(discontinuedDate);
+	}
+
+	[Fact]
+	public async Task QueryAsync_ShouldFilterByDateOnly()
+	{
+		var date1 = new DateOnly(2024, 1, 15);
+		var date2 = new DateOnly(2024, 6, 15);
+
+		var product1 = new TestProduct
+		{
+			Name = "January Product",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = date1,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var product2 = new TestProduct
+		{
+			Name = "June Product",
+			Price = 20.00m,
+			IsActive = true,
+			ReleaseDate = date2,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		await _dbService.InsertAsync(product1);
+		await _dbService.InsertAsync(product2);
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE release_date = @ReleaseDate",
+			new { ReleaseDate = date1 });
+
+		products.Should().HaveCount(1);
+		products.First().Name.Should().Be("January Product");
+	}
+
+	#endregion
+
+	#region <=== DateTimeOffset Property Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithDateTimeOffsetProperty_ShouldPersistValue()
+	{
+		var publishedAt = new DateTimeOffset(2024, 6, 15, 14, 30, 0, TimeSpan.Zero);
+		var product = new TestProduct
+		{
+			Name = "DateTimeOffset Test Product",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = publishedAt,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.PublishedAt.Should().BeCloseTo(publishedAt, TimeSpan.FromSeconds(1));
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithDateTimeOffsetUtc_ShouldPersistCorrectly()
+	{
+		var publishedAt = DateTimeOffset.UtcNow;
+		var product = new TestProduct
+		{
+			Name = "DateTimeOffset UTC Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = publishedAt,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.PublishedAt.Should().BeCloseTo(publishedAt, TimeSpan.FromSeconds(1));
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullableDateTimeOffset_ShouldPersistNull()
+	{
+		var product = new TestProduct
+		{
+			Name = "Nullable DateTimeOffset Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = DateTimeOffset.UtcNow,
+			LastReviewedAt = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.LastReviewedAt.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullableDateTimeOffset_ShouldPersistValue()
+	{
+		var lastReviewedAt = new DateTimeOffset(2024, 12, 31, 23, 59, 59, TimeSpan.Zero);
+		var product = new TestProduct
+		{
+			Name = "Nullable DateTimeOffset With Value",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = DateTimeOffset.UtcNow,
+			LastReviewedAt = lastReviewedAt,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.LastReviewedAt.Should().BeCloseTo(lastReviewedAt, TimeSpan.FromSeconds(1));
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateDateTimeOffsetProperty()
+	{
+		var originalPublishedAt = DateTimeOffset.UtcNow.AddDays(-30);
+		var product = new TestProduct
+		{
+			Name = "DateTimeOffset Update Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = originalPublishedAt,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var newPublishedAt = DateTimeOffset.UtcNow;
+		product.PublishedAt = newPublishedAt;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.PublishedAt.Should().BeCloseTo(newPublishedAt, TimeSpan.FromSeconds(1));
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateNullableDateTimeOffsetFromNullToValue()
+	{
+		var product = new TestProduct
+		{
+			Name = "Nullable DateTimeOffset Update Test",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = DateTimeOffset.UtcNow,
+			LastReviewedAt = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		var lastReviewedAt = DateTimeOffset.UtcNow;
+		product.LastReviewedAt = lastReviewedAt;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved!.LastReviewedAt.Should().BeCloseTo(lastReviewedAt, TimeSpan.FromSeconds(1));
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithDifferentTimeZones_ShouldStoreAsUtc()
+	{
+		var time1 = new DateTimeOffset(2024, 6, 15, 12, 0, 0, TimeSpan.Zero);
+		var time2 = new DateTimeOffset(2024, 6, 15, 13, 0, 0, TimeSpan.Zero);
+
+		var product1 = new TestProduct
+		{
+			Name = "Time1 Product",
+			Price = 10.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = time1,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var product2 = new TestProduct
+		{
+			Name = "Time2 Product",
+			Price = 20.00m,
+			IsActive = true,
+			ReleaseDate = DateOnly.FromDateTime(DateTime.UtcNow),
+			PublishedAt = time2,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys1 = await _dbService.InsertAsync(product1);
+		var keys2 = await _dbService.InsertAsync(product2);
+
+		var retrieved1 = await _dbService.GetAsync<TestProduct>(keys1["Id"]);
+		var retrieved2 = await _dbService.GetAsync<TestProduct>(keys2["Id"]);
+
+		retrieved1!.PublishedAt.Should().BeCloseTo(time1, TimeSpan.FromSeconds(1));
+		retrieved2!.PublishedAt.Should().BeCloseTo(time2, TimeSpan.FromSeconds(1));
+		(retrieved2!.PublishedAt - retrieved1!.PublishedAt).Should().BeCloseTo(
+			TimeSpan.FromHours(1), TimeSpan.FromSeconds(1));
+	}
+
+	#endregion
+
+	#region <=== Write(false) Attribute Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithWriteFalseProperty_ShouldNotIncludeInInsert()
+	{
+		var product = new TestProduct
+		{
+			Name = "Write Attribute Test",
+			Price = 49.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Write Attribute Test");
+		retrieved.Price.Should().Be(49.99m);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithWriteFalseProperty_ShouldNotIncludeInUpdate()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original Name",
+			Price = 25.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated Name";
+		product.Price = 99.99m;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Updated Name");
+		retrieved.Price.Should().Be(99.99m);
+	}
+
+	[Fact]
+	public async Task DisplayName_ShouldBeComputedCorrectly()
+	{
+		var product = new TestProduct
+		{
+			Name = "Widget",
+			Price = 29.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		product.DisplayName.Should().Be("Widget - $29.99");
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.DisplayName.Should().Be("Widget - $29.99");
+	}
+
+	#endregion
+
+	#region <=== JsonColumn Attribute Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithJsonColumnProperty_ShouldPersistAsJson()
+	{
+		var metadata = new ProductMetadata
+		{
+			Manufacturer = "Acme Corp",
+			CountryOfOrigin = "USA",
+			Tags = ["electronics", "gadgets", "new"],
+			Attributes = new Dictionary<string, string>
+			{
+				["color"] = "blue",
+				["weight"] = "1.5kg"
+			}
+		};
+
+		var product = new TestProduct
+		{
+			Name = "JSON Test Product",
+			Price = 99.99m,
+			IsActive = true,
+			Metadata = metadata,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().NotBeNull();
+		retrieved.Metadata!.Manufacturer.Should().Be("Acme Corp");
+		retrieved.Metadata.CountryOfOrigin.Should().Be("USA");
+		retrieved.Metadata.Tags.Should().BeEquivalentTo(["electronics", "gadgets", "new"]);
+		retrieved.Metadata.Attributes.Should().ContainKey("color").WhoseValue.Should().Be("blue");
+		retrieved.Metadata.Attributes.Should().ContainKey("weight").WhoseValue.Should().Be("1.5kg");
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithNullJsonColumn_ShouldPersistNull()
+	{
+		var product = new TestProduct
+		{
+			Name = "Null JSON Test",
+			Price = 49.99m,
+			IsActive = true,
+			Metadata = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_WithEmptyJsonObject_ShouldPersistEmptyObject()
+	{
+		var product = new TestProduct
+		{
+			Name = "Empty JSON Test",
+			Price = 29.99m,
+			IsActive = true,
+			Metadata = new ProductMetadata(),
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().NotBeNull();
+		retrieved.Metadata!.Manufacturer.Should().BeNull();
+		retrieved.Metadata.CountryOfOrigin.Should().BeNull();
+		retrieved.Metadata.Tags.Should().BeEmpty();
+		retrieved.Metadata.Attributes.Should().BeEmpty();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateJsonColumnProperty()
+	{
+		var product = new TestProduct
+		{
+			Name = "JSON Update Test",
+			Price = 59.99m,
+			IsActive = true,
+			Metadata = new ProductMetadata
+			{
+				Manufacturer = "Original Manufacturer",
+				Tags = ["original"]
+			},
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Metadata = new ProductMetadata
+		{
+			Manufacturer = "Updated Manufacturer",
+			CountryOfOrigin = "Canada",
+			Tags = ["updated", "modified"],
+			Attributes = new Dictionary<string, string> { ["size"] = "large" }
+		};
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().NotBeNull();
+		retrieved.Metadata!.Manufacturer.Should().Be("Updated Manufacturer");
+		retrieved.Metadata.CountryOfOrigin.Should().Be("Canada");
+		retrieved.Metadata.Tags.Should().BeEquivalentTo(["updated", "modified"]);
+		retrieved.Metadata.Attributes.Should().ContainKey("size").WhoseValue.Should().Be("large");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateJsonColumnFromValueToNull()
+	{
+		var product = new TestProduct
+		{
+			Name = "JSON to Null Test",
+			Price = 39.99m,
+			IsActive = true,
+			Metadata = new ProductMetadata { Manufacturer = "Some Manufacturer" },
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Metadata = null;
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_ShouldUpdateJsonColumnFromNullToValue()
+	{
+		var product = new TestProduct
+		{
+			Name = "Null to JSON Test",
+			Price = 44.99m,
+			IsActive = true,
+			Metadata = null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Metadata = new ProductMetadata
+		{
+			Manufacturer = "New Manufacturer",
+			Tags = ["new"]
+		};
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Metadata.Should().NotBeNull();
+		retrieved.Metadata!.Manufacturer.Should().Be("New Manufacturer");
+		retrieved.Metadata.Tags.Should().BeEquivalentTo(["new"]);
+	}
+
+	#endregion
+
+	#region <=== External Attribute Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_WithExternalProperty_ShouldNotIncludeInInsert()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Attribute Test",
+			Price = 59.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Electronics",
+			RelatedTags = ["tag1", "tag2"]
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		id.Should().NotBe(Guid.Empty);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("External Attribute Test");
+		retrieved.CategoryName.Should().BeNull();
+		retrieved.RelatedTags.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_WithExternalProperty_ShouldNotIncludeInUpdate()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Update Test",
+			Price = 29.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Updated Name";
+		product.CategoryName = "New Category";
+		product.RelatedTags = ["new-tag"];
+		await _dbService.UpdateAsync(product);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Updated Name");
+		retrieved.CategoryName.Should().BeNull();
+		retrieved.RelatedTags.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task GetAsync_WithExternalProperty_ShouldNotIncludeInSelect()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Select Test",
+			Price = 39.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = await _dbService.InsertAsync(product);
+		var id = keys["Id"];
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(id);
+
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("External Select Test");
+		retrieved.CategoryName.Should().BeNull();
+		retrieved.RelatedTags.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task QueryAsync_WithExternalProperty_ShouldNotAffectQuery()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Query Test",
+			Price = 49.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Test Category",
+			RelatedTags = ["query-tag"]
+		};
+
+		await _dbService.InsertAsync(product);
+
+		var products = await _dbService.QueryAsync<TestProduct>(
+			"SELECT * FROM test_products WHERE name = @Name",
+			new { Name = "External Query Test" });
+
+		products.Should().HaveCount(1);
+		var retrieved = products.First();
+		retrieved.Name.Should().Be("External Query Test");
+		retrieved.CategoryName.Should().BeNull();
+		retrieved.RelatedTags.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task GetListAsync_WithExternalProperty_ShouldNotIncludeInSelect()
+	{
+		var product1 = new TestProduct
+		{
+			Name = "External List Test 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Category A"
+		};
+		var product2 = new TestProduct
+		{
+			Name = "External List Test 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Category B"
+		};
+
+		await _dbService.InsertAsync(product1);
+		await _dbService.InsertAsync(product2);
+
+		var products = await _dbService.GetListAsync<TestProduct>();
+
+		products.Should().HaveCount(2);
+		products.Should().OnlyContain(p => p.CategoryName == null);
+		products.Should().OnlyContain(p => p.RelatedTags == null);
+	}
+
+	[Fact]
+	public void Insert_Sync_WithExternalProperty_ShouldNotIncludeInInsert()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Sync Insert Test",
+			Price = 69.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Sync Category",
+			RelatedTags = ["sync-tag"]
+		};
+
+		var keys = _dbService.Insert(product);
+		var id = keys["Id"];
+
+		var retrieved = _dbService.Get<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("External Sync Insert Test");
+		retrieved.CategoryName.Should().BeNull();
+		retrieved.RelatedTags.Should().BeNull();
+	}
+
+	[Fact]
+	public void Update_Sync_WithExternalProperty_ShouldNotIncludeInUpdate()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Sync Update Test",
+			Price = 79.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var keys = _dbService.Insert(product);
+		var id = keys["Id"];
+		product.Id = id;
+
+		product.Name = "Sync Updated Name";
+		product.CategoryName = "Sync New Category";
+		_dbService.Update(product);
+
+		var retrieved = _dbService.Get<TestProduct>(id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Sync Updated Name");
+		retrieved.CategoryName.Should().BeNull();
+	}
+
+	[Fact]
+	public void Query_Sync_WithExternalProperty_ShouldNotAffectQuery()
+	{
+		var product = new TestProduct
+		{
+			Name = "External Sync Query Test",
+			Price = 89.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			CategoryName = "Sync Query Category"
+		};
+
+		_dbService.Insert(product);
+
+		var products = _dbService.Query<TestProduct>(
+			"SELECT * FROM test_products WHERE name = @Name",
+			new { Name = "External Sync Query Test" });
+
+		products.Should().HaveCount(1);
+		var retrieved = products.First();
+		retrieved.Name.Should().Be("External Sync Query Test");
+		retrieved.CategoryName.Should().BeNull();
+	}
+
+	#endregion
+}

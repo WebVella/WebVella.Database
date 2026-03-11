@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/WebVella.Database/WebVella.Database.csproj" />
+  <Project Path="tests/WebVella.Database.Tests/WebVella.Database.Tests.csproj" />
+</Solution>
