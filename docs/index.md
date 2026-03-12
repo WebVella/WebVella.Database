@@ -16,7 +16,8 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
 10. [Transaction Management](#transaction-management)
 11. [Advisory Locks](#advisory-locks)
 12. [Caching](#caching)
-13. [Best Practices](#best-practices)
+13. [Database Migrations](#database-migrations)
+14. [Best Practices](#best-practices)
 
 ---
 
@@ -1320,6 +1321,240 @@ builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
 
 ---
 
+## Database Migrations
+
+WebVella.Database provides a simple yet powerful migration system for managing database schema changes. Migrations are version-controlled, executed in order, and support rollback on failure.
+
+### Key Features
+
+- **Automatic discovery** - Migrations are discovered by scanning all loaded assemblies
+- **Version ordering** - Migrations are executed in ascending version order
+- **Transactional execution** - Each migration runs in a transaction with automatic rollback on failure
+- **Detailed logging** - Each SQL statement is logged with success/failure status
+- **Post-migration hooks** - Execute custom .NET code after SQL migration
+- **Embedded SQL support** - Load SQL from embedded resource files
+
+### Migration Service Registration
+
+```csharp
+// Basic registration with default options
+builder.Services.AddWebVellaDatabase(connectionString);
+builder.Services.AddWebVellaDatabaseMigrations();
+
+// With custom table names
+builder.Services.AddWebVellaDatabaseMigrations(options =>
+{
+    options.VersionTableName = "_my_db_version";
+    options.UpdateFunctionName = "_my_db_update";
+    options.UpdateLogTableName = "_my_db_update_log";
+});
+
+// Or pass options directly
+builder.Services.AddWebVellaDatabaseMigrations(new DbMigrationOptions
+{
+    VersionTableName = "_custom_version"
+});
+```
+
+### Creating Migrations
+
+#### Method 1: Override GenerateSqlAsync
+
+Create a class that inherits from `DbMigration` and apply the `[DbMigration]` attribute with a version string:
+
+```csharp
+using WebVella.Database.Migrations;
+
+[DbMigration("1.0.0.0")]
+public class InitialSchema : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            CREATE TABLE users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email VARCHAR(255) NOT NULL UNIQUE,
+                username VARCHAR(100) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX idx_users_email ON users(email);
+            CREATE INDEX idx_users_username ON users(username);
+            """);
+    }
+}
+
+[DbMigration("1.0.1.0")]
+public class AddUserProfile : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            ALTER TABLE users ADD COLUMN profile_image_url TEXT;
+            ALTER TABLE users ADD COLUMN bio TEXT;
+            ALTER TABLE users ADD COLUMN updated_at TIMESTAMP;
+            """);
+    }
+}
+```
+
+#### Method 2: Embedded SQL Resource Files
+
+For larger migrations, store SQL in embedded resource files. The base `GenerateSqlAsync` implementation automatically loads SQL from a file named `{FullTypeName}.Script.sql`:
+
+```csharp
+// Migration class - no override needed
+[DbMigration("1.0.2.0")]
+public class CreateOrdersTables : DbMigration { }
+```
+
+Create an embedded resource file `CreateOrdersTables.Script.sql` in the same namespace:
+
+```sql
+-- CreateOrdersTables.Script.sql
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    order_number VARCHAR(50) NOT NULL,
+    total_amount DECIMAL(18, 2) NOT NULL DEFAULT 0,
+    status INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE order_lines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    product_name VARCHAR(255) NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price DECIMAL(18, 2) NOT NULL
+);
+
+CREATE INDEX idx_orders_user ON orders(user_id);
+CREATE INDEX idx_orders_number ON orders(order_number);
+```
+
+**Important:** Mark the SQL file as an embedded resource in your `.csproj`:
+
+```xml
+<ItemGroup>
+    <EmbeddedResource Include="Migrations\CreateOrdersTables.Script.sql" />
+</ItemGroup>
+```
+
+### Post-Migration Logic
+
+Use `PostMigrateAsync` to execute custom .NET code after SQL migration completes:
+
+```csharp
+[DbMigration("1.0.3.0")]
+public class SeedInitialData : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            CREATE TABLE settings (
+                key VARCHAR(100) PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """);
+    }
+
+    public override async Task PostMigrateAsync(IServiceProvider serviceProvider)
+    {
+        var db = serviceProvider.GetRequiredService<IDbService>();
+
+        await db.ExecuteAsync("""
+            INSERT INTO settings (key, value) VALUES
+            ('app_version', '1.0.0'),
+            ('maintenance_mode', 'false'),
+            ('max_upload_size', '10485760')
+            """);
+    }
+}
+```
+
+### Running Migrations
+
+Execute pending migrations at application startup:
+
+```csharp
+var app = builder.Build();
+
+// Run migrations before handling requests
+using (var scope = app.Services.CreateScope())
+{
+    var migrationService = scope.ServiceProvider.GetRequiredService<IDbMigrationService>();
+    await migrationService.ExecutePendingMigrationsAsync();
+}
+
+app.Run();
+```
+
+### Checking Current Version
+
+```csharp
+var migrationService = serviceProvider.GetRequiredService<IDbMigrationService>();
+var currentVersion = await migrationService.GetCurrentDbVersionAsync();
+Console.WriteLine($"Database version: {currentVersion}");
+```
+
+### Migration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `VersionTableName` | `_db_version` | Table that stores the current database version |
+| `UpdateFunctionName` | `_db_update` | Temporary PostgreSQL function name used during migration |
+| `UpdateLogTableName` | `_db_update_log_tbl` | Temporary table for logging migration statements |
+
+### Handling Migration Errors
+
+When a migration fails, a `DbMigrationException` is thrown with detailed logs:
+
+```csharp
+try
+{
+    await migrationService.ExecutePendingMigrationsAsync();
+}
+catch (DbMigrationException ex)
+{
+    Console.WriteLine($"Migration failed: {ex.Message}");
+
+    foreach (var log in ex.MigrationLogs)
+    {
+        var status = log.Success ? "✓" : "✗";
+        Console.WriteLine($"  [{status}] Version {log.Version}: {log.Statement}");
+        if (!log.Success && log.SqlError != null)
+        {
+            Console.WriteLine($"      Error: {log.SqlError}");
+        }
+    }
+}
+```
+
+### Migration Best Practices
+
+1. **Use semantic versioning** - Follow `major.minor.build.revision` format (e.g., "1.0.0.0", "1.2.3.0")
+
+2. **One concern per migration** - Keep migrations focused on a single schema change
+
+3. **Make migrations idempotent** - Use `IF NOT EXISTS` and `IF EXISTS` clauses:
+   ```sql
+   CREATE TABLE IF NOT EXISTS users (...);
+   ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+   DROP TABLE IF EXISTS old_table;
+   ```
+
+4. **Never modify past migrations** - Create new migrations for changes; don't edit existing ones
+
+5. **Test migrations** - Run migrations against a copy of production data before deploying
+
+6. **Keep migrations in version control** - Migrations are code and should be tracked
+
+---
+
 ## Best Practices
 
 ### 1. Use Async Methods
@@ -1534,6 +1769,23 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `CreateAdvisoryLockScope` | Create lock scope without transaction |
 | `CreateAdvisoryLockScopeAsync` | Async version |
 
+### IDbMigrationService Interface
+
+| Method | Description |
+|--------|-------------|
+| `ExecutePendingMigrationsAsync` | Execute all pending migrations in version order |
+| `GetCurrentDbVersionAsync` | Get the current database schema version |
+
+### Migration Classes
+
+| Class | Description |
+|-------|-------------|
+| `DbMigration` | Abstract base class for creating migrations |
+| `DbMigrationAttribute` | Marks a class as a migration with a version |
+| `DbMigrationOptions` | Configuration options for the migration service |
+| `DbMigrationException` | Exception thrown when a migration fails |
+| `DbMigrationLogItem` | Log entry for a single SQL statement execution |
+
 ---
 
 ## Version History
@@ -1542,6 +1794,10 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 - Added `ExecuteScalar<T>` and `ExecuteScalarAsync<T>` methods for single value queries
 - Added `ExecuteReader` and `ExecuteReaderAsync` methods for low-level data reading
 - Added `GetDataTable` and `GetDataTableAsync` methods for DataTable results
+- Added database migration support with `IDbMigrationService`
+- Added `DbMigration` base class for creating versioned migrations
+- Added support for embedded SQL resource files in migrations
+- Added `PostMigrateAsync` hook for post-migration .NET code execution
 
 ### v1.0.0
 - Initial release with full CRUD support

@@ -12,7 +12,7 @@ Checkout our other projects:
 
 
 ## What is WebVella.Database?
-A lightweight, high-performance Postgres data access library built on Dapper. It simplifies data object mapping and complex database workflows by providing first-class support for nested transactions and effortless advisory lock management.
+A lightweight, high-performance Postgres data access library built on Dapper. It simplifies data object mapping, migrations and complex database workflows by providing first-class support for nested transactions and effortless advisory lock management.
 
 ## How to get it
 You can either clone this repository or get the [Nuget package](https://www.nuget.org/packages/WebVella.Database/)
@@ -29,6 +29,7 @@ GitHub stars guide developers toward great tools. If you find this project valua
 - **Entity caching** - Optional in-memory caching with automatic invalidation
 - **JSON column support** - Automatic serialization/deserialization of JSON columns
 - **Attribute-based mapping** - Use attributes like `[Table]`, `[Key]`, `[JsonColumn]`, and more
+- **Database migrations** - Version-controlled schema migrations with rollback support
 
 ## Setup
 
@@ -219,6 +220,87 @@ user.Balance += 100;
 await _db.UpdateAsync(user);
 
 await lockScope.CompleteAsync();
+```
+
+## Database Migrations
+
+WebVella.Database provides a simple yet powerful migration system for managing database schema changes.
+
+### Migration Setup
+
+```csharp
+// Register migration services
+builder.Services.AddWebVellaDatabase(connectionString);
+builder.Services.AddWebVellaDatabaseMigrations();
+
+// Or with custom options
+builder.Services.AddWebVellaDatabaseMigrations(options =>
+{
+    options.VersionTableName = "_my_db_version";
+});
+```
+
+### Creating Migrations
+
+Create a class that inherits from `DbMigration` and apply the `[DbMigration]` attribute:
+
+```csharp
+using WebVella.Database.Migrations;
+
+[DbMigration("1.0.0.0")]
+public class InitialSchema : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            CREATE TABLE users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """);
+    }
+}
+```
+
+### Using Embedded SQL Files
+
+For larger migrations, use embedded SQL resource files:
+
+```csharp
+[DbMigration("1.0.1.0")]
+public class AddUserProfile : DbMigration { }
+// Requires: AddUserProfile.Script.sql as embedded resource in same namespace
+```
+
+### Post-Migration Logic
+
+Execute custom code after SQL migration:
+
+```csharp
+[DbMigration("1.0.2.0")]
+public class SeedData : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);");
+    }
+
+    public override async Task PostMigrateAsync(IServiceProvider serviceProvider)
+    {
+        var db = serviceProvider.GetRequiredService<IDbService>();
+        await db.ExecuteAsync("INSERT INTO settings VALUES ('app_version', '1.0.0')");
+    }
+}
+```
+
+### Running Migrations
+
+```csharp
+// In Program.cs or startup
+using var scope = app.Services.CreateScope();
+var migrationService = scope.ServiceProvider.GetRequiredService<IDbMigrationService>();
+await migrationService.ExecutePendingMigrationsAsync();
 ```
 
 ## Entity Attributes

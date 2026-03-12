@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using WebVella.Database.Migrations;
 
 namespace WebVella.Database;
 
@@ -161,6 +162,58 @@ public static class ServiceCollectionExtensions
 	}
 
 	/// <summary>
+	/// Adds WebVella.Database migration services to the specified <see cref="IServiceCollection"/>.
+	/// </summary>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseMigrations(this IServiceCollection services)
+	{
+		return AddWebVellaDatabaseMigrations(services, new DbMigrationOptions());
+	}
+
+	/// <summary>
+	/// Adds WebVella.Database migration services to the specified <see cref="IServiceCollection"/> with options.
+	/// </summary>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="options">The migration options to configure the service.</param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseMigrations(
+		this IServiceCollection services,
+		DbMigrationOptions options)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(options);
+
+		services.AddScoped<IDbMigrationService>(sp =>
+		{
+			var db = sp.GetRequiredService<IDbService>();
+			return new DbMigrationService(sp, db, options);
+		});
+
+		return services;
+	}
+
+	/// <summary>
+	/// Adds WebVella.Database migration services to the specified <see cref="IServiceCollection"/>
+	/// with a configuration action.
+	/// </summary>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="configureOptions">An action to configure the migration options.</param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseMigrations(
+		this IServiceCollection services,
+		Action<DbMigrationOptions> configureOptions)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(configureOptions);
+
+		var options = new DbMigrationOptions();
+		configureOptions(options);
+
+		return AddWebVellaDatabaseMigrations(services, options);
+	}
+
+	/// <summary>
 	/// Registers all Dapper type handlers for PostgreSQL types.
 	/// This method is thread-safe and will only register handlers once.
 	/// </summary>
@@ -212,7 +265,7 @@ public static class ServiceCollectionExtensions
 	/// Gets all application assemblies from the current AppDomain, excluding system and framework assemblies.
 	/// </summary>
 	/// <returns>An array of application assemblies.</returns>
-	private static Assembly[] GetApplicationAssemblies()
+	internal static Assembly[] GetApplicationAssemblies()
 	{
 		return AppDomain.CurrentDomain.GetAssemblies()
 			.Where(a => !a.IsDynamic)
