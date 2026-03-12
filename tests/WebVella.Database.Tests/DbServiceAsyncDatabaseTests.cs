@@ -36,8 +36,8 @@ public class DbServiceAsyncDatabaseTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 

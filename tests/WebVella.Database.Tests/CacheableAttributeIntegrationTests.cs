@@ -81,13 +81,14 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _cachedDbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _cachedDbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		// First get should hit database and cache result
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 
-		// Verify item is in cache (use keys dictionary for cache key generation)
+		// Verify item is in cache (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out var cachedEntity).Should().BeTrue();
 		cachedEntity.Should().NotBeNull();
@@ -113,13 +114,14 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = _cachedDbService.Insert(product);
-		var id = keys["Id"];
+		var inserted = _cachedDbService.Insert(product);
+		var id = inserted.Id;
 
 		// First get should hit database and cache result
 		var retrieved1 = _cachedDbService.Get<CacheableTestProduct>(id);
 
-		// Verify item is in cache (use keys dictionary for cache key generation)
+		// Verify item is in cache (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out var cachedEntity).Should().BeTrue();
 		cachedEntity.Should().NotBeNull();
@@ -143,7 +145,8 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _cachedDbService.InsertAsync(product);
+		var inserted = await _cachedDbService.InsertAsync(product);
+		var keys = new Dictionary<string, Guid> { ["Id"] = inserted.Id };
 
 		// Get using dictionary keys
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(keys);
@@ -282,22 +285,22 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _cachedDbService.InsertAsync(product);
-		var id = keys["Id"];
-		product.Id = id;
+		var inserted = await _cachedDbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		// Load into cache
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 		retrieved1.Should().NotBeNull();
 		retrieved1!.Name.Should().Be("Update Invalidation Test");
 
-		// Verify cache is populated
+		// Verify cache is populated (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
 
 		// Update the product - should invalidate cache
-		product.Name = "Updated Name";
-		await _cachedDbService.UpdateAsync(product);
+		inserted.Name = "Updated Name";
+		await _cachedDbService.UpdateAsync(inserted);
 
 		// Cache should be invalidated
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
@@ -319,14 +322,15 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _cachedDbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _cachedDbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		// Load into cache
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 		retrieved1.Should().NotBeNull();
 
-		// Verify cache is populated
+		// Verify cache is populated (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
 
@@ -384,20 +388,20 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = _cachedDbService.Insert(product);
-		var id = keys["Id"];
-		product.Id = id;
+		var inserted = _cachedDbService.Insert(product);
+		var id = inserted.Id;
 
 		// Load into cache
 		_cachedDbService.Get<CacheableTestProduct>(id);
 
-		// Verify cache is populated
+		// Verify cache is populated (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
 
 		// Update - should invalidate cache
-		product.Name = "Sync Updated";
-		_cachedDbService.Update(product);
+		inserted.Name = "Sync Updated";
+		_cachedDbService.Update(inserted);
 
 		// Cache should be invalidated
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
@@ -414,13 +418,14 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = _cachedDbService.Insert(product);
-		var id = keys["Id"];
+		var inserted = _cachedDbService.Insert(product);
+		var id = inserted.Id;
 
 		// Load into cache
 		_cachedDbService.Get<CacheableTestProduct>(id);
 
-		// Verify cache is populated
+		// Verify cache is populated (DbService uses dictionary-based key internally)
+		var keys = new Dictionary<string, Guid> { ["Id"] = id };
 		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
 		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
 

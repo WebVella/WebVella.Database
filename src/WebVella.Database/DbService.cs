@@ -216,25 +216,25 @@ public interface IDbService
 
 	#region <=== Insert ===>
 
-	/// <summary>
-	/// Inserts an entity into the database and returns the generated key value(s).
-	/// The key properties (marked with [Key]) will be populated via RETURNING.
-	/// </summary>
-	/// <typeparam name="T">The entity type.</typeparam>
-	/// <param name="entity">The entity to insert.</param>
-	/// <returns>A dictionary of property names to Guids.</returns>
-	Dictionary<string, Guid> Insert<T>(T entity) where T : class;
+		/// <summary>
+		/// Inserts an entity into the database and returns the inserted entity with generated values.
+		/// The key properties (marked with [Key]) will be populated via RETURNING.
+		/// </summary>
+		/// <typeparam name="T">The entity type.</typeparam>
+		/// <param name="entity">The entity to insert.</param>
+		/// <returns>The inserted entity with generated key values populated.</returns>
+		T Insert<T>(T entity) where T : class;
 
-	/// <summary>
-	/// Asynchronously inserts an entity into the database and returns the generated key value(s).
-	/// The key properties (marked with [Key]) will be populated via RETURNING.
-	/// </summary>
-	/// <typeparam name="T">The entity type.</typeparam>
-	/// <param name="entity">The entity to insert.</param>
-	/// <returns>A dictionary of property names to Guids.</returns>
-	Task<Dictionary<string, Guid>> InsertAsync<T>(T entity) where T : class;
+		/// <summary>
+		/// Asynchronously inserts an entity into the database and returns the inserted entity with
+		/// generated values. The key properties (marked with [Key]) will be populated via RETURNING.
+		/// </summary>
+		/// <typeparam name="T">The entity type.</typeparam>
+		/// <param name="entity">The entity to insert.</param>
+		/// <returns>The inserted entity with generated key values populated.</returns>
+		Task<T> InsertAsync<T>(T entity) where T : class;
 
-	#endregion
+		#endregion
 
 	#region <=== Update ===>
 
@@ -929,107 +929,103 @@ public class DbService : IDbService
 
 	#region <=== Insert ===>
 
-	/// <inheritdoc/>
-	public Dictionary<string, Guid> Insert<T>(T entity) where T : class
-	{
-		var metadata = EntityMetadata.GetOrCreate<T>();
-
-		foreach (var keyProp in metadata.KeyProperties)
+		/// <inheritdoc/>
+		public T Insert<T>(T entity) where T : class
 		{
-			var currentValue = (Guid)keyProp.GetValue(entity)!;
-			if (currentValue == Guid.Empty)
-			{
-				keyProp.SetValue(entity, Guid.NewGuid());
-			}
-		}
+			var metadata = EntityMetadata.GetOrCreate<T>();
 
-		var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
-			$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
-
-		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
-
-		var result = new Dictionary<string, Guid>();
-
-		if (metadata.HasSingleKey)
-		{
-			var id = npgsqlConn.ExecuteScalar<Guid>(sql, entity, transaction: null);
-			result[metadata.FirstKeyPropertyName] = id;
-		}
-		else
-		{
-			var row = npgsqlConn.QueryFirst(sql, entity, transaction: null);
-			var rowDict = (IDictionary<string, object>)row;
 			foreach (var keyProp in metadata.KeyProperties)
 			{
-				if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
-					rowDict.TryGetValue(columnName, out var value))
+				var currentValue = (Guid)keyProp.GetValue(entity)!;
+				if (currentValue == Guid.Empty)
 				{
-					result[keyProp.Name] = (Guid)value;
+					keyProp.SetValue(entity, Guid.NewGuid());
 				}
 			}
-		}
 
-		if (metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
+				$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
 
-		return result;
-	}
+			using var conn = CreateConnection();
+			var npgsqlConn = conn.GetUnderlyingConnection();
 
-	/// <inheritdoc/>
-	public async Task<Dictionary<string, Guid>> InsertAsync<T>(T entity) where T : class
-	{
-		var metadata = EntityMetadata.GetOrCreate<T>();
-
-		foreach (var keyProp in metadata.KeyProperties)
-		{
-			var currentValue = (Guid)keyProp.GetValue(entity)!;
-			if (currentValue == Guid.Empty)
+			if (metadata.HasSingleKey)
 			{
-				keyProp.SetValue(entity, Guid.NewGuid());
+				var id = npgsqlConn.ExecuteScalar<Guid>(sql, entity, transaction: null);
+				metadata.KeyProperties[0].SetValue(entity, id);
 			}
+			else
+			{
+				var row = npgsqlConn.QueryFirst(sql, entity, transaction: null);
+				var rowDict = (IDictionary<string, object>)row;
+				foreach (var keyProp in metadata.KeyProperties)
+				{
+					if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
+						rowDict.TryGetValue(columnName, out var value))
+					{
+						keyProp.SetValue(entity, (Guid)value);
+					}
+				}
+			}
+
+			if (metadata.IsCacheable)
+			{
+				_cache.Invalidate<T>();
+			}
+
+			return entity;
 		}
 
-		var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
-			$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
-
-		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
-
-		var result = new Dictionary<string, Guid>();
-
-		if (metadata.HasSingleKey)
+		/// <inheritdoc/>
+		public async Task<T> InsertAsync<T>(T entity) where T : class
 		{
-			var id = await npgsqlConn.ExecuteScalarAsync<Guid>(sql, entity, transaction: null);
-			result[metadata.FirstKeyPropertyName] = id;
-		}
-		else
-		{
-			var row = await npgsqlConn.QueryFirstAsync(sql, entity, transaction: null);
-			var rowDict = (IDictionary<string, object>)row;
+			var metadata = EntityMetadata.GetOrCreate<T>();
+
 			foreach (var keyProp in metadata.KeyProperties)
 			{
-				if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
-					rowDict.TryGetValue(columnName, out var value))
+				var currentValue = (Guid)keyProp.GetValue(entity)!;
+				if (currentValue == Guid.Empty)
 				{
-					result[keyProp.Name] = (Guid)value;
+					keyProp.SetValue(entity, Guid.NewGuid());
 				}
 			}
+
+			var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
+				$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
+
+			await using var conn = await CreateConnectionAsync();
+			var npgsqlConn = conn.GetUnderlyingConnection();
+
+			if (metadata.HasSingleKey)
+			{
+				var id = await npgsqlConn.ExecuteScalarAsync<Guid>(sql, entity, transaction: null);
+				metadata.KeyProperties[0].SetValue(entity, id);
+			}
+			else
+			{
+				var row = await npgsqlConn.QueryFirstAsync(sql, entity, transaction: null);
+				var rowDict = (IDictionary<string, object>)row;
+				foreach (var keyProp in metadata.KeyProperties)
+				{
+					if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
+						rowDict.TryGetValue(columnName, out var value))
+					{
+						keyProp.SetValue(entity, (Guid)value);
+					}
+				}
+			}
+
+			if (metadata.IsCacheable)
+			{
+				_cache.Invalidate<T>();
+			}
+
+			return entity;
 		}
 
-		if (metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+		#endregion
 
-		return result;
-	}
-
-	#endregion
-
-	#region <=== Update ===>
+		#region <=== Update ===>
 
 	/// <inheritdoc/>
 	public bool Update<T>(T entity, string[]? propertyNamesUpdateOnly = null) where T : class

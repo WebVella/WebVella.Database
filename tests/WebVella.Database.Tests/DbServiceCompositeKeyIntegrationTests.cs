@@ -26,160 +26,178 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
 
     #region <=== InsertAsync Tests ===>
 
-    [Fact]
-    public async Task InsertAsync_WithCompositeKey_ShouldReturnBothKeys()
-    {
-        var orderItem = new TestOrderItem
+        [Fact]
+        public async Task InsertAsync_WithCompositeKey_ShouldReturnEntityWithBothKeys()
         {
-            Quantity = 5,
-            UnitPrice = 10.00m,
-            TotalPrice = 50.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var keys = await _dbService.InsertAsync(orderItem);
-
-        keys.Should().HaveCount(2);
-        keys.Should().ContainKey("OrderId");
-        keys.Should().ContainKey("ProductId");
-        keys["OrderId"].Should().NotBe(Guid.Empty);
-        keys["ProductId"].Should().NotBe(Guid.Empty);
-    }
-
-    [Fact]
-    public async Task InsertAsync_MultipleCompositeKeyEntities_ShouldGenerateUniqueKeys()
-    {
-        var items = Enumerable.Range(1, 3)
-            .Select(i => new TestOrderItem
+            var orderItem = new TestOrderItem
             {
-                Quantity = i,
-                UnitPrice = i * 10.00m,
-                TotalPrice = i * i * 10.00m,
+                Quantity = 5,
+                UnitPrice = 10.00m,
+                TotalPrice = 50.00m,
                 CreatedAt = DateTime.UtcNow
-            })
-            .ToList();
+            };
 
-        var allKeys = new List<Dictionary<string, Guid>>();
-        foreach (var item in items)
-        {
-            var keys = await _dbService.InsertAsync(item);
-            allKeys.Add(keys);
+            var inserted = await _dbService.InsertAsync(orderItem);
+
+            inserted.Should().NotBeNull();
+            inserted.OrderId.Should().NotBe(Guid.Empty);
+            inserted.ProductId.Should().NotBe(Guid.Empty);
         }
 
-        allKeys.Should().HaveCount(3);
-        var allOrderIds = allKeys.Select(k => k["OrderId"]).ToList();
-        var allProductIds = allKeys.Select(k => k["ProductId"]).ToList();
-
-        allOrderIds.Should().OnlyHaveUniqueItems();
-        allProductIds.Should().OnlyHaveUniqueItems();
-    }
-
-    [Fact]
-    public async Task InsertAsync_WithEmptyCompositeKeys_ShouldAutoGenerateNewGuids()
-    {
-        var orderItem = new TestOrderItem
+        [Fact]
+        public async Task InsertAsync_MultipleCompositeKeyEntities_ShouldGenerateUniqueKeys()
         {
-            OrderId = Guid.Empty,
-            ProductId = Guid.Empty,
-            Quantity = 7,
-            UnitPrice = 15.00m,
-            TotalPrice = 105.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+            var items = Enumerable.Range(1, 3)
+                .Select(i => new TestOrderItem
+                {
+                    Quantity = i,
+                    UnitPrice = i * 10.00m,
+                    TotalPrice = i * i * 10.00m,
+                    CreatedAt = DateTime.UtcNow
+                })
+                .ToList();
 
-        var keys = await _dbService.InsertAsync(orderItem);
+            var insertedItems = new List<TestOrderItem>();
+            foreach (var item in items)
+            {
+                var inserted = await _dbService.InsertAsync(item);
+                insertedItems.Add(inserted);
+            }
 
-        keys["OrderId"].Should().NotBe(Guid.Empty);
-        keys["ProductId"].Should().NotBe(Guid.Empty);
-        orderItem.OrderId.Should().NotBe(Guid.Empty);
-        orderItem.ProductId.Should().NotBe(Guid.Empty);
-        orderItem.OrderId.Should().Be(keys["OrderId"]);
-        orderItem.ProductId.Should().Be(keys["ProductId"]);
+            insertedItems.Should().HaveCount(3);
+            var allOrderIds = insertedItems.Select(i => i.OrderId).ToList();
+            var allProductIds = insertedItems.Select(i => i.ProductId).ToList();
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().NotBeNull();
-        retrieved!.Quantity.Should().Be(7);
-    }
+            allOrderIds.Should().OnlyHaveUniqueItems();
+            allProductIds.Should().OnlyHaveUniqueItems();
+        }
 
-    [Fact]
-    public async Task InsertAsync_WithPresetCompositeKeys_ShouldUseProvidedGuids()
-    {
-        var presetOrderId = Guid.NewGuid();
-        var presetProductId = Guid.NewGuid();
-        var orderItem = new TestOrderItem
+        [Fact]
+        public async Task InsertAsync_WithEmptyCompositeKeys_ShouldAutoGenerateNewGuids()
         {
-            OrderId = presetOrderId,
-            ProductId = presetProductId,
-            Quantity = 8,
-            UnitPrice = 20.00m,
-            TotalPrice = 160.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+            var orderItem = new TestOrderItem
+            {
+                OrderId = Guid.Empty,
+                ProductId = Guid.Empty,
+                Quantity = 7,
+                UnitPrice = 15.00m,
+                TotalPrice = 105.00m,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        var keys = await _dbService.InsertAsync(orderItem);
+            var inserted = await _dbService.InsertAsync(orderItem);
 
-        keys["OrderId"].Should().Be(presetOrderId);
-        keys["ProductId"].Should().Be(presetProductId);
-        orderItem.OrderId.Should().Be(presetOrderId);
-        orderItem.ProductId.Should().Be(presetProductId);
+            inserted.OrderId.Should().NotBe(Guid.Empty);
+            inserted.ProductId.Should().NotBe(Guid.Empty);
+            orderItem.OrderId.Should().NotBe(Guid.Empty);
+            orderItem.ProductId.Should().NotBe(Guid.Empty);
+            orderItem.OrderId.Should().Be(inserted.OrderId);
+            orderItem.ProductId.Should().Be(inserted.ProductId);
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().NotBeNull();
-        retrieved!.OrderId.Should().Be(presetOrderId);
-        retrieved.ProductId.Should().Be(presetProductId);
-    }
+            var keys = new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted.OrderId,
+                ["ProductId"] = inserted.ProductId
+            };
+            var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+            retrieved.Should().NotBeNull();
+            retrieved!.Quantity.Should().Be(7);
+        }
 
-    [Fact]
-    public async Task InsertAsync_WithPartiallyEmptyCompositeKeys_ShouldAutoGenerateOnlyEmptyOnes()
-    {
-        var presetOrderId = Guid.NewGuid();
-        var orderItem = new TestOrderItem
+        [Fact]
+        public async Task InsertAsync_WithPresetCompositeKeys_ShouldUseProvidedGuids()
         {
-            OrderId = presetOrderId,
-            ProductId = Guid.Empty,
-            Quantity = 9,
-            UnitPrice = 25.00m,
-            TotalPrice = 225.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+            var presetOrderId = Guid.NewGuid();
+            var presetProductId = Guid.NewGuid();
+            var orderItem = new TestOrderItem
+            {
+                OrderId = presetOrderId,
+                ProductId = presetProductId,
+                Quantity = 8,
+                UnitPrice = 20.00m,
+                TotalPrice = 160.00m,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        var keys = await _dbService.InsertAsync(orderItem);
+            var inserted = await _dbService.InsertAsync(orderItem);
 
-        keys["OrderId"].Should().Be(presetOrderId);
-        keys["ProductId"].Should().NotBe(Guid.Empty);
-        orderItem.OrderId.Should().Be(presetOrderId);
-        orderItem.ProductId.Should().NotBe(Guid.Empty);
+            inserted.OrderId.Should().Be(presetOrderId);
+            inserted.ProductId.Should().Be(presetProductId);
+            orderItem.OrderId.Should().Be(presetOrderId);
+            orderItem.ProductId.Should().Be(presetProductId);
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().NotBeNull();
-        retrieved!.OrderId.Should().Be(presetOrderId);
-    }
+            var keys = new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted.OrderId,
+                ["ProductId"] = inserted.ProductId
+            };
+            var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+            retrieved.Should().NotBeNull();
+            retrieved!.OrderId.Should().Be(presetOrderId);
+            retrieved.ProductId.Should().Be(presetProductId);
+        }
 
-    #endregion
-
-    #region <=== GetAsync Tests ===>
-
-    [Fact]
-    public async Task GetAsync_WithCompositeKeyDictionary_ShouldReturnEntity()
-    {
-        var orderItem = new TestOrderItem
+        [Fact]
+        public async Task InsertAsync_WithPartiallyEmptyCompositeKeys_ShouldAutoGenerateOnlyEmptyOnes()
         {
-            Quantity = 3,
-            UnitPrice = 25.00m,
-            TotalPrice = 75.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var keys = await _dbService.InsertAsync(orderItem);
+            var presetOrderId = Guid.NewGuid();
+            var orderItem = new TestOrderItem
+            {
+                OrderId = presetOrderId,
+                ProductId = Guid.Empty,
+                Quantity = 9,
+                UnitPrice = 25.00m,
+                TotalPrice = 225.00m,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+            var inserted = await _dbService.InsertAsync(orderItem);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.OrderId.Should().Be(keys["OrderId"]);
-        retrieved.ProductId.Should().Be(keys["ProductId"]);
-        retrieved.Quantity.Should().Be(3);
-        retrieved.UnitPrice.Should().Be(25.00m);
-        retrieved.TotalPrice.Should().Be(75.00m);
-    }
+            inserted.OrderId.Should().Be(presetOrderId);
+            inserted.ProductId.Should().NotBe(Guid.Empty);
+            orderItem.OrderId.Should().Be(presetOrderId);
+            orderItem.ProductId.Should().NotBe(Guid.Empty);
+
+            var keys = new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted.OrderId,
+                ["ProductId"] = inserted.ProductId
+            };
+            var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+            retrieved.Should().NotBeNull();
+            retrieved!.OrderId.Should().Be(presetOrderId);
+        }
+
+        #endregion
+
+        #region <=== GetAsync Tests ===>
+
+        [Fact]
+        public async Task GetAsync_WithCompositeKeyDictionary_ShouldReturnEntity()
+        {
+            var orderItem = new TestOrderItem
+            {
+                Quantity = 3,
+                UnitPrice = 25.00m,
+                TotalPrice = 75.00m,
+                CreatedAt = DateTime.UtcNow
+            };
+            var inserted = await _dbService.InsertAsync(orderItem);
+
+            var keys = new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted.OrderId,
+                ["ProductId"] = inserted.ProductId
+            };
+            var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+
+            retrieved.Should().NotBeNull();
+            retrieved!.OrderId.Should().Be(inserted.OrderId);
+            retrieved.ProductId.Should().Be(inserted.ProductId);
+            retrieved.Quantity.Should().Be(3);
+            retrieved.UnitPrice.Should().Be(25.00m);
+            retrieved.TotalPrice.Should().Be(75.00m);
+        }
 
     [Fact]
     public async Task GetAsync_WithCompositeKeyDictionary_NonExistent_ShouldReturnNull()
@@ -228,91 +246,106 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
 
     #endregion
 
-    #region <=== UpdateAsync Tests ===>
+	#region <=== UpdateAsync Tests ===>
 
-    [Fact]
-    public async Task UpdateAsync_WithCompositeKey_ShouldUpdateEntity()
-    {
-        var orderItem = new TestOrderItem
-        {
-            Quantity = 2,
-            UnitPrice = 15.00m,
-            TotalPrice = 30.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var keys = await _dbService.InsertAsync(orderItem);
-        orderItem.OrderId = keys["OrderId"];
-        orderItem.ProductId = keys["ProductId"];
+		[Fact]
+		public async Task UpdateAsync_WithCompositeKey_ShouldUpdateEntity()
+		{
+			var orderItem = new TestOrderItem
+			{
+				Quantity = 2,
+				UnitPrice = 15.00m,
+				TotalPrice = 30.00m,
+				CreatedAt = DateTime.UtcNow
+			};
+			var inserted = await _dbService.InsertAsync(orderItem);
 
-        orderItem.Quantity = 10;
-        orderItem.TotalPrice = 150.00m;
-        var updated = await _dbService.UpdateAsync(orderItem);
+			inserted.Quantity = 10;
+			inserted.TotalPrice = 150.00m;
+			var updated = await _dbService.UpdateAsync(inserted);
 
-        updated.Should().BeTrue();
+			updated.Should().BeTrue();
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().NotBeNull();
-        retrieved!.Quantity.Should().Be(10);
-        retrieved.TotalPrice.Should().Be(150.00m);
-    }
+			var keys = new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted.OrderId,
+				["ProductId"] = inserted.ProductId
+			};
+			var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+			retrieved.Should().NotBeNull();
+			retrieved!.Quantity.Should().Be(10);
+			retrieved.TotalPrice.Should().Be(150.00m);
+		}
 
-    [Fact]
-    public async Task UpdateAsync_WithCompositeKey_ShouldOnlyUpdateMatchingEntity()
-    {
-        var item1 = new TestOrderItem
-        {
-            Quantity = 1,
-            UnitPrice = 10.00m,
-            TotalPrice = 10.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var item2 = new TestOrderItem
-        {
-            Quantity = 2,
-            UnitPrice = 20.00m,
-            TotalPrice = 40.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+		[Fact]
+		public async Task UpdateAsync_WithCompositeKey_ShouldOnlyUpdateMatchingEntity()
+		{
+			var item1 = new TestOrderItem
+			{
+				Quantity = 1,
+				UnitPrice = 10.00m,
+				TotalPrice = 10.00m,
+				CreatedAt = DateTime.UtcNow
+			};
+			var item2 = new TestOrderItem
+			{
+				Quantity = 2,
+				UnitPrice = 20.00m,
+				TotalPrice = 40.00m,
+				CreatedAt = DateTime.UtcNow
+			};
 
-        var keys1 = await _dbService.InsertAsync(item1);
-        var keys2 = await _dbService.InsertAsync(item2);
+			var inserted1 = await _dbService.InsertAsync(item1);
+			var inserted2 = await _dbService.InsertAsync(item2);
 
-        item1.OrderId = keys1["OrderId"];
-        item1.ProductId = keys1["ProductId"];
-        item1.Quantity = 99;
+			inserted1.Quantity = 99;
+			await _dbService.UpdateAsync(inserted1);
 
-        await _dbService.UpdateAsync(item1);
+			var keys1 = new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted1.OrderId,
+				["ProductId"] = inserted1.ProductId
+			};
+			var keys2 = new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted2.OrderId,
+				["ProductId"] = inserted2.ProductId
+			};
+			var retrieved1 = await _dbService.GetAsync<TestOrderItem>(keys1);
+			var retrieved2 = await _dbService.GetAsync<TestOrderItem>(keys2);
 
-        var retrieved1 = await _dbService.GetAsync<TestOrderItem>(keys1);
-        var retrieved2 = await _dbService.GetAsync<TestOrderItem>(keys2);
+			retrieved1!.Quantity.Should().Be(99);
+			retrieved2!.Quantity.Should().Be(2);
+		}
 
-        retrieved1!.Quantity.Should().Be(99);
-        retrieved2!.Quantity.Should().Be(2);
-    }
+		#endregion
 
-    #endregion
+		#region <=== DeleteAsync Tests ===>
 
-    #region <=== DeleteAsync Tests ===>
+		[Fact]
+		public async Task DeleteAsync_WithCompositeKeyDictionary_ShouldDeleteEntity()
+		{
+			var orderItem = new TestOrderItem
+			{
+				Quantity = 5,
+				UnitPrice = 20.00m,
+				TotalPrice = 100.00m,
+				CreatedAt = DateTime.UtcNow
+			};
+			var inserted = await _dbService.InsertAsync(orderItem);
 
-    [Fact]
-    public async Task DeleteAsync_WithCompositeKeyDictionary_ShouldDeleteEntity()
-    {
-        var orderItem = new TestOrderItem
-        {
-            Quantity = 5,
-            UnitPrice = 20.00m,
-            TotalPrice = 100.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var keys = await _dbService.InsertAsync(orderItem);
+			var keys = new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted.OrderId,
+				["ProductId"] = inserted.ProductId
+			};
+			var deleted = await _dbService.DeleteAsync<TestOrderItem>(keys);
 
-        var deleted = await _dbService.DeleteAsync<TestOrderItem>(keys);
+			deleted.Should().BeTrue();
 
-        deleted.Should().BeTrue();
-
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().BeNull();
-    }
+			var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+			retrieved.Should().BeNull();
+		}
 
     [Fact]
     public async Task DeleteAsync_WithCompositeKeyDictionary_NonExistent_ShouldReturnFalse()
@@ -359,61 +392,74 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
-    [Fact]
-    public async Task DeleteAsync_WithCompositeKey_ShouldOnlyDeleteMatchingEntity()
-    {
-        var item1 = new TestOrderItem
-        {
-            Quantity = 1,
-            UnitPrice = 10.00m,
-            TotalPrice = 10.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var item2 = new TestOrderItem
-        {
-            Quantity = 2,
-            UnitPrice = 20.00m,
-            TotalPrice = 40.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+	[Fact]
+	public async Task DeleteAsync_WithCompositeKey_ShouldOnlyDeleteMatchingEntity()
+	{
+		var item1 = new TestOrderItem
+		{
+			Quantity = 1,
+			UnitPrice = 10.00m,
+			TotalPrice = 10.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+		var item2 = new TestOrderItem
+		{
+			Quantity = 2,
+			UnitPrice = 20.00m,
+			TotalPrice = 40.00m,
+			CreatedAt = DateTime.UtcNow
+		};
 
-        var keys1 = await _dbService.InsertAsync(item1);
-        var keys2 = await _dbService.InsertAsync(item2);
+		var inserted1 = await _dbService.InsertAsync(item1);
+		var inserted2 = await _dbService.InsertAsync(item2);
 
-        var deleted = await _dbService.DeleteAsync<TestOrderItem>(keys1);
+		var keys1 = new Dictionary<string, Guid>
+		{
+			["OrderId"] = inserted1.OrderId,
+			["ProductId"] = inserted1.ProductId
+		};
+		var keys2 = new Dictionary<string, Guid>
+		{
+			["OrderId"] = inserted2.OrderId,
+			["ProductId"] = inserted2.ProductId
+		};
+		var deleted = await _dbService.DeleteAsync<TestOrderItem>(keys1);
 
-        deleted.Should().BeTrue();
+		deleted.Should().BeTrue();
 
-        var retrieved1 = await _dbService.GetAsync<TestOrderItem>(keys1);
-        var retrieved2 = await _dbService.GetAsync<TestOrderItem>(keys2);
+		var retrieved1 = await _dbService.GetAsync<TestOrderItem>(keys1);
+		var retrieved2 = await _dbService.GetAsync<TestOrderItem>(keys2);
 
-        retrieved1.Should().BeNull();
-        retrieved2.Should().NotBeNull();
-    }
+		retrieved1.Should().BeNull();
+		retrieved2.Should().NotBeNull();
+	}
 
-    [Fact]
-    public async Task DeleteAsync_WithEntityOverload_CompositeKey_ShouldDeleteEntity()
-    {
-        var orderItem = new TestOrderItem
-        {
-            Quantity = 3,
-            UnitPrice = 15.00m,
-            TotalPrice = 45.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var keys = await _dbService.InsertAsync(orderItem);
-        orderItem.OrderId = keys["OrderId"];
-        orderItem.ProductId = keys["ProductId"];
+	[Fact]
+	public async Task DeleteAsync_WithEntityOverload_CompositeKey_ShouldDeleteEntity()
+	{
+		var orderItem = new TestOrderItem
+		{
+			Quantity = 3,
+			UnitPrice = 15.00m,
+			TotalPrice = 45.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+		var inserted = await _dbService.InsertAsync(orderItem);
 
-        var deleted = await _dbService.DeleteAsync(orderItem);
+		var deleted = await _dbService.DeleteAsync(inserted);
 
-        deleted.Should().BeTrue();
+		deleted.Should().BeTrue();
 
-        var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
-        retrieved.Should().BeNull();
-    }
+		var keys = new Dictionary<string, Guid>
+		{
+			["OrderId"] = inserted.OrderId,
+			["ProductId"] = inserted.ProductId
+		};
+		var retrieved = await _dbService.GetAsync<TestOrderItem>(keys);
+		retrieved.Should().BeNull();
+	}
 
-    #endregion
+	#endregion
 
     #region <=== GetListAsync Tests ===>
 
@@ -441,42 +487,54 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
         allItems.Should().OnlyContain(i => i.OrderId != Guid.Empty && i.ProductId != Guid.Empty);
     }
 
-    [Fact]
-    public async Task GetListAsync_WithSpecificCompositeKeys_ShouldReturnMatchingEntities()
-    {
-        var item1 = new TestOrderItem
-        {
-            Quantity = 1,
-            UnitPrice = 10.00m,
-            TotalPrice = 10.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var item2 = new TestOrderItem
-        {
-            Quantity = 2,
-            UnitPrice = 20.00m,
-            TotalPrice = 40.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var item3 = new TestOrderItem
-        {
-            Quantity = 3,
-            UnitPrice = 30.00m,
-            TotalPrice = 90.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+	[Fact]
+	public async Task GetListAsync_WithSpecificCompositeKeys_ShouldReturnMatchingEntities()
+	{
+		var item1 = new TestOrderItem
+		{
+			Quantity = 1,
+			UnitPrice = 10.00m,
+			TotalPrice = 10.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+		var item2 = new TestOrderItem
+		{
+			Quantity = 2,
+			UnitPrice = 20.00m,
+			TotalPrice = 40.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+		var item3 = new TestOrderItem
+		{
+			Quantity = 3,
+			UnitPrice = 30.00m,
+			TotalPrice = 90.00m,
+			CreatedAt = DateTime.UtcNow
+		};
 
-        var keys1 = await _dbService.InsertAsync(item1);
-        var keys2 = await _dbService.InsertAsync(item2);
-        await _dbService.InsertAsync(item3);
+		var inserted1 = await _dbService.InsertAsync(item1);
+		var inserted2 = await _dbService.InsertAsync(item2);
+		await _dbService.InsertAsync(item3);
 
-        var keysList = new List<Dictionary<string, Guid>> { keys1, keys2 };
-        var items = await _dbService.GetListAsync<TestOrderItem>(keysList);
+		var keysList = new List<Dictionary<string, Guid>>
+		{
+			new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted1.OrderId,
+				["ProductId"] = inserted1.ProductId
+			},
+			new Dictionary<string, Guid>
+			{
+				["OrderId"] = inserted2.OrderId,
+				["ProductId"] = inserted2.ProductId
+			}
+		};
+		var items = await _dbService.GetListAsync<TestOrderItem>(keysList);
 
-        items.Should().HaveCount(2);
-        items.Select(i => i.Quantity).Should().Contain(new[] { 1, 2 });
-        items.Select(i => i.Quantity).Should().NotContain(3);
-    }
+		items.Should().HaveCount(2);
+		items.Select(i => i.Quantity).Should().Contain(new[] { 1, 2 });
+		items.Select(i => i.Quantity).Should().NotContain(3);
+	}
 
     [Fact]
     public async Task GetListAsync_WithEmptyKeysList_ShouldReturnEmptyCollection()
@@ -535,8 +593,8 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = await _dbService.InsertAsync(product);
-        var id = keys["Id"];
+        var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
         var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -556,8 +614,8 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = await _dbService.InsertAsync(product);
-        var id = keys["Id"];
+        var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
         var deleted = await _dbService.DeleteAsync<TestProduct>(id);
 
@@ -579,45 +637,48 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
 
     #region <=== Synchronous Method Tests ===>
 
-    [Fact]
-    public void Insert_WithCompositeKey_ShouldReturnBothKeys()
-    {
-        var orderItem = new TestOrderItem
+        [Fact]
+        public void Insert_WithCompositeKey_ShouldReturnEntityWithBothKeys()
         {
-            Quantity = 5,
-            UnitPrice = 10.00m,
-            TotalPrice = 50.00m,
-            CreatedAt = DateTime.UtcNow
-        };
+            var orderItem = new TestOrderItem
+            {
+                Quantity = 5,
+                UnitPrice = 10.00m,
+                TotalPrice = 50.00m,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        var keys = _dbService.Insert(orderItem);
+            var inserted = _dbService.Insert(orderItem);
 
-        keys.Should().HaveCount(2);
-        keys.Should().ContainKey("OrderId");
-        keys.Should().ContainKey("ProductId");
-        keys["OrderId"].Should().NotBe(Guid.Empty);
-        keys["ProductId"].Should().NotBe(Guid.Empty);
-    }
+            inserted.Should().NotBeNull();
+            inserted.OrderId.Should().NotBe(Guid.Empty);
+            inserted.ProductId.Should().NotBe(Guid.Empty);
+        }
 
-    [Fact]
-    public void Get_WithCompositeKeyDictionary_ShouldReturnEntity()
-    {
-        var orderItem = new TestOrderItem
+        [Fact]
+        public void Get_WithCompositeKeyDictionary_ShouldReturnEntity()
         {
-            Quantity = 3,
-            UnitPrice = 25.00m,
-            TotalPrice = 75.00m,
-            CreatedAt = DateTime.UtcNow
-        };
-        var keys = _dbService.Insert(orderItem);
+            var orderItem = new TestOrderItem
+            {
+                Quantity = 3,
+                UnitPrice = 25.00m,
+                TotalPrice = 75.00m,
+                CreatedAt = DateTime.UtcNow
+            };
+            var inserted = _dbService.Insert(orderItem);
 
-        var retrieved = _dbService.Get<TestOrderItem>(keys);
+            var keys = new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted.OrderId,
+                ["ProductId"] = inserted.ProductId
+            };
+            var retrieved = _dbService.Get<TestOrderItem>(keys);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.OrderId.Should().Be(keys["OrderId"]);
-        retrieved.ProductId.Should().Be(keys["ProductId"]);
-        retrieved.Quantity.Should().Be(3);
-    }
+            retrieved.Should().NotBeNull();
+            retrieved!.OrderId.Should().Be(inserted.OrderId);
+            retrieved.ProductId.Should().Be(inserted.ProductId);
+            retrieved.Quantity.Should().Be(3);
+        }
 
     [Fact]
     public void Get_WithCompositeKeyDictionary_NonExistent_ShouldReturnNull()
@@ -643,16 +704,19 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             TotalPrice = 30.00m,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = _dbService.Insert(orderItem);
-        orderItem.OrderId = keys["OrderId"];
-        orderItem.ProductId = keys["ProductId"];
+        var inserted = _dbService.Insert(orderItem);
 
-        orderItem.Quantity = 10;
-        orderItem.TotalPrice = 150.00m;
-        var updated = _dbService.Update(orderItem);
+        inserted.Quantity = 10;
+        inserted.TotalPrice = 150.00m;
+        var updated = _dbService.Update(inserted);
 
         updated.Should().BeTrue();
 
+        var keys = new Dictionary<string, Guid>
+        {
+            ["OrderId"] = inserted.OrderId,
+            ["ProductId"] = inserted.ProductId
+        };
         var retrieved = _dbService.Get<TestOrderItem>(keys);
         retrieved.Should().NotBeNull();
         retrieved!.Quantity.Should().Be(10);
@@ -669,8 +733,13 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             TotalPrice = 100.00m,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = _dbService.Insert(orderItem);
+        var inserted = _dbService.Insert(orderItem);
 
+        var keys = new Dictionary<string, Guid>
+        {
+            ["OrderId"] = inserted.OrderId,
+            ["ProductId"] = inserted.ProductId
+        };
         var deleted = _dbService.Delete<TestOrderItem>(keys);
 
         deleted.Should().BeTrue();
@@ -689,14 +758,17 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             TotalPrice = 45.00m,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = _dbService.Insert(orderItem);
-        orderItem.OrderId = keys["OrderId"];
-        orderItem.ProductId = keys["ProductId"];
+        var inserted = _dbService.Insert(orderItem);
 
-        var deleted = _dbService.Delete(orderItem);
+        var deleted = _dbService.Delete(inserted);
 
         deleted.Should().BeTrue();
 
+        var keys = new Dictionary<string, Guid>
+        {
+            ["OrderId"] = inserted.OrderId,
+            ["ProductId"] = inserted.ProductId
+        };
         var retrieved = _dbService.Get<TestOrderItem>(keys);
         retrieved.Should().BeNull();
     }
@@ -750,11 +822,23 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         };
 
-        var keys1 = _dbService.Insert(item1);
-        var keys2 = _dbService.Insert(item2);
+        var inserted1 = _dbService.Insert(item1);
+        var inserted2 = _dbService.Insert(item2);
         _dbService.Insert(item3);
 
-        var keysList = new List<Dictionary<string, Guid>> { keys1, keys2 };
+        var keysList = new List<Dictionary<string, Guid>>
+        {
+            new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted1.OrderId,
+                ["ProductId"] = inserted1.ProductId
+            },
+            new Dictionary<string, Guid>
+            {
+                ["OrderId"] = inserted2.OrderId,
+                ["ProductId"] = inserted2.ProductId
+            }
+        };
         var items = _dbService.GetList<TestOrderItem>(keysList);
 
         items.Should().HaveCount(2);
@@ -835,8 +919,8 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = _dbService.Insert(product);
-        var id = keys["Id"];
+        var inserted = _dbService.Insert(product);
+		var id = inserted.Id;
 
         var retrieved = _dbService.Get<TestProduct>(id);
 
@@ -856,8 +940,8 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        var keys = _dbService.Insert(product);
-        var id = keys["Id"];
+        var inserted = _dbService.Insert(product);
+		var id = inserted.Id;
 
         var deleted = _dbService.Delete<TestProduct>(id);
 
@@ -892,11 +976,11 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
             CreatedAt = DateTime.UtcNow
         };
 
-        var keys1 = _dbService.Insert(product1);
-        var keys2 = _dbService.Insert(product2);
+        var inserted1 = _dbService.Insert(product1);
+        var inserted2 = _dbService.Insert(product2);
         _dbService.Insert(product3);
 
-        var ids = new List<Guid> { keys1["Id"], keys2["Id"] };
+        var ids = new List<Guid> { inserted1.Id, inserted2.Id };
         var products = _dbService.GetList<TestProduct>(ids);
 
         products.Should().HaveCount(2);

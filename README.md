@@ -102,11 +102,10 @@ public class UserService
         _db = db;
     }
 
-    // Insert
-    public async Task<Guid> CreateUserAsync(User user)
+    // Insert - returns the entity with generated Id populated
+    public async Task<User> CreateUserAsync(User user)
     {
-        var keys = await _db.InsertAsync(user);
-        return keys["Id"];
+        return await _db.InsertAsync(user);
     }
 
     // Get by ID

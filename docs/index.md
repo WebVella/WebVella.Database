@@ -501,13 +501,13 @@ var user = new User
     CreatedAt = DateTime.UtcNow
 };
 
-// Sync version
-var keys = _db.Insert(user);
-Guid userId = keys["Id"];
+// Sync version - returns the entity with generated Id populated
+var insertedUser = _db.Insert(user);
+Guid userId = insertedUser.Id;
 
-// Async version
-var keys = await _db.InsertAsync(user);
-Guid userId = keys["Id"];
+// Async version - returns the entity with generated Id populated
+var insertedUser = await _db.InsertAsync(user);
+Guid userId = insertedUser.Id;
 
 // Insert with explicit key (you provide the ID)
 var auditLog = new AuditLog
@@ -525,7 +525,7 @@ var auditLog = new AuditLog
     Timestamp = DateTimeOffset.UtcNow
 };
 
-await _db.InsertAsync(auditLog);
+var insertedLog = await _db.InsertAsync(auditLog);
 
 // Insert with composite key
 var userRole = new UserRole
@@ -536,8 +536,8 @@ var userRole = new UserRole
     AssignedBy = currentUserId
 };
 
-var keys = await _db.InsertAsync(userRole);
-// keys["UserId"] and keys["RoleId"] are populated
+var insertedRole = await _db.InsertAsync(userRole);
+// insertedRole.UserId and insertedRole.RoleId are populated
 ```
 
 ### Get (Single Entity)
@@ -1332,7 +1332,7 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `QueryWithJoinAsync<TParent, TChild1, TChild2>` | Async version with two children |
 | `Execute` | Execute command, return affected rows |
 | `ExecuteAsync` | Async version of Execute |
-| `Insert<T>` | Insert entity, return generated keys |
+| `Insert<T>` | Insert entity, return inserted entity with generated keys |
 | `InsertAsync<T>` | Async version of Insert |
 | `Update<T>` | Update entity (all or specific properties) |
 | `UpdateAsync<T>` | Async version of Update |

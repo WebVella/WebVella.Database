@@ -39,8 +39,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 	}
@@ -58,8 +58,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 
@@ -80,8 +80,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 
@@ -105,8 +105,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 
@@ -132,8 +132,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 		var ids = new List<Guid>();
 		foreach (var product in products)
 		{
-			var keys = await _dbService.InsertAsync(product);
-			ids.Add(keys["Id"]);
+			var inserted = await _dbService.InsertAsync(product);
+			ids.Add(inserted.Id);
 		}
 
 		ids.Should().HaveCount(5);
@@ -153,8 +153,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 		product.Id.Should().NotBe(Guid.Empty);
@@ -178,8 +178,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().Be(presetId);
 		product.Id.Should().Be(presetId);
@@ -205,8 +205,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrievedProduct = await _dbService.GetAsync<TestProduct>(id);
 
@@ -246,8 +246,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = now,
 			UpdatedAt = now
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -327,11 +327,11 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys1 = await _dbService.InsertAsync(product1);
-		var keys2 = await _dbService.InsertAsync(product2);
+		var inserted1 = await _dbService.InsertAsync(product1);
+		var inserted2 = await _dbService.InsertAsync(product2);
 		await _dbService.InsertAsync(product3);
 
-		var ids = new List<Guid> { keys1["Id"], keys2["Id"] };
+		var ids = new List<Guid> { inserted1.Id, inserted2.Id };
 		var products = await _dbService.GetListAsync<TestProduct>(ids);
 
 		products.Should().HaveCount(2);
@@ -382,8 +382,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var existingId = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var existingId = inserted.Id;
 
 		var mixedIds = new List<Guid> { existingId, Guid.NewGuid(), Guid.NewGuid() };
 		var products = await _dbService.GetListAsync<TestProduct>(mixedIds);
@@ -612,8 +612,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated Name";
@@ -665,10 +665,10 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys1 = await _dbService.InsertAsync(product1);
-		var keys2 = await _dbService.InsertAsync(product2);
-		var id1 = keys1["Id"];
-		var id2 = keys2["Id"];
+		var inserted1 = await _dbService.InsertAsync(product1);
+		var inserted2 = await _dbService.InsertAsync(product2);
+		var id1 = inserted1.Id;
+		var id2 = inserted2.Id;
 
 		product1.Id = id1;
 		product1.Name = "Updated Product 1";
@@ -694,8 +694,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated";
@@ -730,8 +730,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated Name";
@@ -761,8 +761,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "New Name";
@@ -787,8 +787,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated";
@@ -813,8 +813,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		product.Id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		product.Id = inserted.Id;
 
 		var act = async () => await _dbService.UpdateAsync(product, ["InvalidProperty"]);
 
@@ -833,8 +833,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated";
@@ -866,8 +866,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var deleted = await _dbService.DeleteAsync(product);
@@ -913,10 +913,10 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys1 = await _dbService.InsertAsync(product1);
-		var keys2 = await _dbService.InsertAsync(product2);
-		var id1 = keys1["Id"];
-		var id2 = keys2["Id"];
+		var inserted1 = await _dbService.InsertAsync(product1);
+		var inserted2 = await _dbService.InsertAsync(product2);
+		var id1 = inserted1.Id;
+		var id2 = inserted2.Id;
 
 		product2.Id = id2;
 
@@ -939,8 +939,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			IsActive = true,
 			CreatedAt = DateTime.UtcNow
 		};
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var firstDelete = await _dbService.DeleteAsync(product);
@@ -1132,8 +1132,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		for (int i = 1; i <= 5; i++)
@@ -1159,8 +1159,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
 		retrieved!.Price.Should().Be(12345.67m);
@@ -1192,8 +1192,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1213,8 +1213,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1245,8 +1245,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 				CreatedAt = DateTime.UtcNow
 			};
 
-			var keys = await _dbService.InsertAsync(product);
-			var id = keys["Id"];
+			var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 			var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1268,8 +1268,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Status = ProductStatus.Active;
@@ -1298,8 +1298,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Changed Name";
@@ -1360,8 +1360,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1382,8 +1382,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1405,8 +1405,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1427,8 +1427,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var newDate = new DateOnly(2024, 12, 25);
@@ -1452,8 +1452,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var discontinuedDate = new DateOnly(2025, 6, 30);
@@ -1517,8 +1517,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1540,8 +1540,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1563,8 +1563,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1587,8 +1587,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1610,8 +1610,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var newPublishedAt = DateTimeOffset.UtcNow;
@@ -1636,8 +1636,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		var lastReviewedAt = DateTimeOffset.UtcNow;
@@ -1674,11 +1674,11 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys1 = await _dbService.InsertAsync(product1);
-		var keys2 = await _dbService.InsertAsync(product2);
+		var inserted1 = await _dbService.InsertAsync(product1);
+		var inserted2 = await _dbService.InsertAsync(product2);
 
-		var retrieved1 = await _dbService.GetAsync<TestProduct>(keys1["Id"]);
-		var retrieved2 = await _dbService.GetAsync<TestProduct>(keys2["Id"]);
+		var retrieved1 = await _dbService.GetAsync<TestProduct>(inserted1.Id);
+		var retrieved2 = await _dbService.GetAsync<TestProduct>(inserted2.Id);
 
 		retrieved1!.PublishedAt.Should().BeCloseTo(time1, TimeSpan.FromSeconds(1));
 		retrieved2!.PublishedAt.Should().BeCloseTo(time2, TimeSpan.FromSeconds(1));
@@ -1701,8 +1701,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 
@@ -1723,8 +1723,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated Name";
@@ -1750,8 +1750,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 
 		product.DisplayName.Should().Be("Widget - $29.99");
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 		retrieved.Should().NotBeNull();
@@ -1786,8 +1786,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1812,8 +1812,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1833,8 +1833,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -1862,8 +1862,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Metadata = new ProductMetadata
@@ -1897,8 +1897,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Metadata = null;
@@ -1922,8 +1922,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Metadata = new ProductMetadata
@@ -1958,8 +1958,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			RelatedTags = ["tag1", "tag2"]
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
 
@@ -1981,8 +1981,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Updated Name";
@@ -2008,8 +2008,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = await _dbService.InsertAsync(product);
-		var id = keys["Id"];
+		var inserted = await _dbService.InsertAsync(product);
+		var id = inserted.Id;
 
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 
@@ -2088,8 +2088,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			RelatedTags = ["sync-tag"]
 		};
 
-		var keys = _dbService.Insert(product);
-		var id = keys["Id"];
+		var inserted = _dbService.Insert(product);
+		var id = inserted.Id;
 
 		var retrieved = _dbService.Get<TestProduct>(id);
 		retrieved.Should().NotBeNull();
@@ -2109,8 +2109,8 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 			CreatedAt = DateTime.UtcNow
 		};
 
-		var keys = _dbService.Insert(product);
-		var id = keys["Id"];
+		var inserted = _dbService.Insert(product);
+		var id = inserted.Id;
 		product.Id = id;
 
 		product.Name = "Sync Updated Name";
