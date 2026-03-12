@@ -989,4 +989,250 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
     }
 
     #endregion
+
+    #region <=== Anonymous Object Key Tests ===>
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_ShouldReturnEntity()
+    {
+        var orderItem = new TestOrderItem
+        {
+            Quantity = 7,
+            UnitPrice = 35.00m,
+            TotalPrice = 245.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var inserted = await _dbService.InsertAsync(orderItem);
+
+        var retrieved = await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+
+        retrieved.Should().NotBeNull();
+        retrieved!.OrderId.Should().Be(inserted.OrderId);
+        retrieved.ProductId.Should().Be(inserted.ProductId);
+        retrieved.Quantity.Should().Be(7);
+        retrieved.UnitPrice.Should().Be(35.00m);
+    }
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_NonExistent_ShouldReturnNull()
+    {
+        var result = await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = Guid.NewGuid() });
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_MissingProperty_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid() });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Missing key property 'ProductId'*");
+    }
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_InvalidPropertyType_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = "invalid-guid" });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Property 'ProductId' must be of type Guid*");
+    }
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_EmptyObject_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.GetAsync<TestOrderItem>(new { });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*must have at least one Guid property*");
+    }
+
+    [Fact]
+    public async Task GetAsync_WithAnonymousObject_NullKeys_ShouldThrowArgumentNullException()
+    {
+        var act = async () => await _dbService.GetAsync<TestOrderItem>((object)null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Get_WithAnonymousObject_ShouldReturnEntity()
+    {
+        var orderItem = new TestOrderItem
+        {
+            Quantity = 8,
+            UnitPrice = 40.00m,
+            TotalPrice = 320.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var inserted = _dbService.Insert(orderItem);
+
+        var retrieved = _dbService.Get<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+
+        retrieved.Should().NotBeNull();
+        retrieved!.OrderId.Should().Be(inserted.OrderId);
+        retrieved.ProductId.Should().Be(inserted.ProductId);
+        retrieved.Quantity.Should().Be(8);
+    }
+
+    [Fact]
+    public void Get_WithAnonymousObject_NonExistent_ShouldReturnNull()
+    {
+        var result = _dbService.Get<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = Guid.NewGuid() });
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetListAsync_WithAnonymousObjects_ShouldReturnMatchingEntities()
+    {
+        var item1 = new TestOrderItem
+        {
+            Quantity = 11,
+            UnitPrice = 10.00m,
+            TotalPrice = 110.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item2 = new TestOrderItem
+        {
+            Quantity = 22,
+            UnitPrice = 20.00m,
+            TotalPrice = 440.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item3 = new TestOrderItem
+        {
+            Quantity = 33,
+            UnitPrice = 30.00m,
+            TotalPrice = 990.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var inserted1 = await _dbService.InsertAsync(item1);
+        var inserted2 = await _dbService.InsertAsync(item2);
+        await _dbService.InsertAsync(item3);
+
+        var items = await _dbService.GetListAsync<TestOrderItem>(new[]
+        {
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId },
+            new { OrderId = inserted2.OrderId, ProductId = inserted2.ProductId }
+        });
+
+        items.Should().HaveCount(2);
+        items.Select(i => i.Quantity).Should().Contain(new[] { 11, 22 });
+        items.Select(i => i.Quantity).Should().NotContain(33);
+    }
+
+    [Fact]
+    public async Task GetListAsync_WithAnonymousObjects_EmptyList_ShouldReturnEmpty()
+    {
+        await _dbService.InsertAsync(new TestOrderItem
+        {
+            Quantity = 1,
+            UnitPrice = 10.00m,
+            TotalPrice = 10.00m,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        var items = await _dbService.GetListAsync<TestOrderItem>(
+            Array.Empty<object>());
+
+        items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetListAsync_WithAnonymousObjects_NonExistent_ShouldReturnEmpty()
+    {
+        await _dbService.InsertAsync(new TestOrderItem
+        {
+            Quantity = 1,
+            UnitPrice = 10.00m,
+            TotalPrice = 10.00m,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        var items = await _dbService.GetListAsync<TestOrderItem>(new[]
+        {
+            new { OrderId = Guid.NewGuid(), ProductId = Guid.NewGuid() }
+        });
+
+        items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetListAsync_WithAnonymousObjects_MissingProperty_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.GetListAsync<TestOrderItem>(new[]
+        {
+            new { OrderId = Guid.NewGuid() }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Missing key property 'ProductId'*");
+    }
+
+    [Fact]
+    public void GetList_WithAnonymousObjects_ShouldReturnMatchingEntities()
+    {
+        var item1 = new TestOrderItem
+        {
+            Quantity = 44,
+            UnitPrice = 10.00m,
+            TotalPrice = 440.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item2 = new TestOrderItem
+        {
+            Quantity = 55,
+            UnitPrice = 20.00m,
+            TotalPrice = 1100.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item3 = new TestOrderItem
+        {
+            Quantity = 66,
+            UnitPrice = 30.00m,
+            TotalPrice = 1980.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var inserted1 = _dbService.Insert(item1);
+        var inserted2 = _dbService.Insert(item2);
+        _dbService.Insert(item3);
+
+        var items = _dbService.GetList<TestOrderItem>(new[]
+        {
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId },
+            new { OrderId = inserted2.OrderId, ProductId = inserted2.ProductId }
+        });
+
+        items.Should().HaveCount(2);
+        items.Select(i => i.Quantity).Should().Contain(new[] { 44, 55 });
+        items.Select(i => i.Quantity).Should().NotContain(66);
+    }
+
+    [Fact]
+    public void GetList_WithAnonymousObjects_EmptyList_ShouldReturnEmpty()
+    {
+        _dbService.Insert(new TestOrderItem
+        {
+            Quantity = 1,
+            UnitPrice = 10.00m,
+            TotalPrice = 10.00m,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        var items = _dbService.GetList<TestOrderItem>(Array.Empty<object>());
+
+        items.Should().BeEmpty();
+    }
+
+    #endregion
 }

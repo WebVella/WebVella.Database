@@ -549,13 +549,19 @@ var user = await _db.GetAsync<User>(userId);
 // Get by single key (sync)
 var user = _db.Get<User>(userId);
 
-// Get by composite key
+// Get by composite key using dictionary
 var keys = new Dictionary<string, Guid>
 {
     ["UserId"] = userId,
     ["RoleId"] = roleId
 };
 var userRole = await _db.GetAsync<UserRole>(keys);
+
+// Get by composite key using anonymous object (simpler syntax)
+var userRole = await _db.GetAsync<UserRole>(new { UserId = userId, RoleId = roleId });
+
+// Sync version with anonymous object
+var userRole = _db.Get<UserRole>(new { UserId = userId, RoleId = roleId });
 
 // Returns null if not found
 var user = await _db.GetAsync<User>(Guid.NewGuid());
@@ -576,13 +582,27 @@ var allCategories = await _db.GetListAsync<Category>(); // Uses cache if [Cachea
 var userIds = new List<Guid> { userId1, userId2, userId3 };
 var users = await _db.GetListAsync<User>(userIds);
 
-// Get multiple by composite keys
+// Get multiple by composite keys using dictionaries
 var keysList = new List<Dictionary<string, Guid>>
 {
     new() { ["UserId"] = user1Id, ["RoleId"] = role1Id },
     new() { ["UserId"] = user2Id, ["RoleId"] = role2Id }
 };
 var userRoles = await _db.GetListAsync<UserRole>(keysList);
+
+// Get multiple by composite keys using anonymous objects (simpler syntax)
+var userRoles = await _db.GetListAsync<UserRole>(new[]
+{
+    new { UserId = user1Id, RoleId = role1Id },
+    new { UserId = user2Id, RoleId = role2Id }
+});
+
+// Sync version with anonymous objects
+var userRoles = _db.GetList<UserRole>(new[]
+{
+    new { UserId = user1Id, RoleId = role1Id },
+    new { UserId = user2Id, RoleId = role2Id }
+});
 ```
 
 ### Update
@@ -1300,6 +1320,18 @@ catch (ArgumentException ex)
     // "Missing key property 'RoleId' in the keys dictionary"
 }
 
+// ArgumentException - invalid property type in anonymous object
+try
+{
+    // Property must be of type Guid
+    await _db.GetAsync<UserRole>(new { UserId = userId, RoleId = "invalid" });
+}
+catch (ArgumentException ex)
+{
+    // "Property 'RoleId' must be of type Guid, but was String."
+}
+}
+
 // PostgresException - database errors
 try
 {
@@ -1338,10 +1370,15 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `UpdateAsync<T>` | Async version of Update |
 | `Delete<T>` | Delete entity by entity, single key, or composite key |
 | `DeleteAsync<T>` | Async version of Delete |
-| `Get<T>` | Get entity by single or composite key |
-| `GetAsync<T>` | Async version of Get |
-| `GetList<T>` | Get all entities or by multiple keys |
-| `GetListAsync<T>` | Async version of GetList |
+| `Get<T>(Guid)` | Get entity by single key |
+| `Get<T>(Dictionary)` | Get entity by composite key using dictionary |
+| `Get<T>(object)` | Get entity by composite key using anonymous object |
+| `GetAsync<T>` | Async versions of Get (3 overloads) |
+| `GetList<T>()` | Get all entities |
+| `GetList<T>(IEnumerable<Guid>)` | Get entities by multiple single keys |
+| `GetList<T>(IEnumerable<Dictionary>)` | Get entities by composite keys using dictionaries |
+| `GetList<T>(IEnumerable<object>)` | Get entities by composite keys using anonymous objects |
+| `GetListAsync<T>` | Async versions of GetList (4 overloads) |
 | `CreateConnection` | Create database connection |
 | `CreateConnectionAsync` | Async version |
 | `CreateTransactionScope` | Create transaction scope with optional lock |

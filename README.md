@@ -114,6 +114,12 @@ public class UserService
         return await _db.GetAsync<User>(id);
     }
 
+    // Get by composite key using anonymous object
+    public async Task<UserRole?> GetUserRoleAsync(Guid userId, Guid roleId)
+    {
+        return await _db.GetAsync<UserRole>(new { UserId = userId, RoleId = roleId });
+    }
+
     // Get all
     public async Task<IEnumerable<User>> GetAllUsersAsync()
     {

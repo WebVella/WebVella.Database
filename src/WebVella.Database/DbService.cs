@@ -348,6 +348,22 @@ public interface IDbService
 	/// <returns>The entity if found; otherwise, null.</returns>
 	Task<T?> GetAsync<T>(Dictionary<string, Guid> keys) where T : class;
 
+	/// <summary>
+	/// Retrieves an entity by its composite primary key using an anonymous object.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keys">An anonymous object with properties matching the key property names and Guid values.</param>
+	/// <returns>The entity if found; otherwise, null.</returns>
+	T? Get<T>(object keys) where T : class;
+
+	/// <summary>
+	/// Asynchronously retrieves an entity by its composite primary key using an anonymous object.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keys">An anonymous object with properties matching the key property names and Guid values.</param>
+	/// <returns>The entity if found; otherwise, null.</returns>
+	Task<T?> GetAsync<T>(object keys) where T : class;
+
 	#endregion
 
 	#region <=== GetList ===>
@@ -397,6 +413,26 @@ public interface IDbService
 	/// <param name="keysList">A collection of dictionaries mapping key property names to their Guid values.</param>
 	/// <returns>A collection of entities that were found.</returns>
 	Task<IEnumerable<T>> GetListAsync<T>(IEnumerable<Dictionary<string, Guid>> keysList) where T : class;
+
+	/// <summary>
+	/// Retrieves multiple entities by their composite primary keys using anonymous objects.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keysList">
+	/// A collection of anonymous objects with properties matching the key property names and Guid values.
+	/// </param>
+	/// <returns>A collection of entities that were found.</returns>
+	IEnumerable<T> GetList<T>(IEnumerable<object> keysList) where T : class;
+
+	/// <summary>
+	/// Asynchronously retrieves multiple entities by their composite primary keys using anonymous objects.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keysList">
+	/// A collection of anonymous objects with properties matching the key property names and Guid values.
+	/// </param>
+	/// <returns>A collection of entities that were found.</returns>
+	Task<IEnumerable<T>> GetListAsync<T>(IEnumerable<object> keysList) where T : class;
 
 	#endregion
 
@@ -1457,6 +1493,22 @@ public class DbService : IDbService
 		return entity;
 	}
 
+	/// <inheritdoc/>
+	public T? Get<T>(object keys) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+		var keysDictionary = ConvertToKeysDictionary(keys);
+		return Get<T>(keysDictionary);
+	}
+
+	/// <inheritdoc/>
+	public async Task<T?> GetAsync<T>(object keys) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+		var keysDictionary = ConvertToKeysDictionary(keys);
+		return await GetAsync<T>(keysDictionary);
+	}
+
 	#endregion
 
 	#region <=== GetList ===>
@@ -1707,6 +1759,22 @@ public class DbService : IDbService
 		}
 	}
 
+	/// <inheritdoc/>
+	public IEnumerable<T> GetList<T>(IEnumerable<object> keysList) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keysList);
+		var dictionaryList = keysList.Select(ConvertToKeysDictionary).ToList();
+		return GetList<T>(dictionaryList);
+	}
+
+	/// <inheritdoc/>
+	public async Task<IEnumerable<T>> GetListAsync<T>(IEnumerable<object> keysList) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keysList);
+		var dictionaryList = keysList.Select(ConvertToKeysDictionary).ToList();
+		return await GetListAsync<T>(dictionaryList);
+	}
+
 	#endregion
 
 	#region <=== Connection & Transaction ===>
@@ -1831,6 +1899,40 @@ public class DbService : IDbService
 		DbConnectionContext connectionCtx, bool shouldDispose, long lockKey)
 	{
 		return await DbAdvisoryLockScope.CreateAsync(connectionCtx, shouldDispose, lockKey);
+	}
+
+	private static Dictionary<string, Guid> ConvertToKeysDictionary(object keys)
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+
+		var result = new Dictionary<string, Guid>();
+		var properties = keys.GetType().GetProperties(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+		foreach (var prop in properties)
+		{
+			if (prop.PropertyType != typeof(Guid))
+			{
+				throw new ArgumentException(
+					$"Property '{prop.Name}' must be of type Guid, but was {prop.PropertyType.Name}.",
+					nameof(keys));
+			}
+
+			var value = prop.GetValue(keys);
+			if (value is Guid guidValue)
+			{
+				result[prop.Name] = guidValue;
+			}
+		}
+
+		if (result.Count == 0)
+		{
+			throw new ArgumentException(
+				"The keys object must have at least one Guid property.",
+				nameof(keys));
+		}
+
+		return result;
 	}
 
 	#endregion
