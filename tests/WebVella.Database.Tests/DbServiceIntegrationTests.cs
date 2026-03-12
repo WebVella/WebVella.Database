@@ -1065,6 +1065,521 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 
 	#endregion
 
+	#region <=== ExecuteReader Tests ===>
+
+	[Fact]
+	public void ExecuteReader_ShouldReturnDataReader()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Reader Product 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Reader Product 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		using var reader = _dbService.ExecuteReader("SELECT name, price FROM test_products ORDER BY price");
+
+		var names = new List<string>();
+		var prices = new List<decimal>();
+
+		while (reader.Read())
+		{
+			names.Add(reader.GetString(0));
+			prices.Add(reader.GetDecimal(1));
+		}
+
+		names.Should().HaveCount(2);
+		names[0].Should().Be("Reader Product 1");
+		names[1].Should().Be("Reader Product 2");
+		prices[0].Should().Be(10.00m);
+		prices[1].Should().Be(20.00m);
+	}
+
+	[Fact]
+	public void ExecuteReader_WithParameters_ShouldFilterResults()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Cheap Item",
+			Price = 5.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Expensive Item",
+			Price = 100.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		using var reader = _dbService.ExecuteReader(
+			"SELECT name FROM test_products WHERE price > @MinPrice",
+			new { MinPrice = 50.00m });
+
+		var names = new List<string>();
+		while (reader.Read())
+		{
+			names.Add(reader.GetString(0));
+		}
+
+		names.Should().HaveCount(1);
+		names[0].Should().Be("Expensive Item");
+	}
+
+	[Fact]
+	public void ExecuteReader_WithNoResults_ShouldReturnEmptyReader()
+	{
+		using var reader = _dbService.ExecuteReader("SELECT name FROM test_products WHERE 1 = 0");
+
+		reader.Read().Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task ExecuteReaderAsync_ShouldReturnDataReader()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async Reader Product 1",
+			Price = 15.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async Reader Product 2",
+			Price = 25.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		await using var reader = await _dbService.ExecuteReaderAsync(
+			"SELECT name, price FROM test_products ORDER BY price");
+
+		var names = new List<string>();
+		var prices = new List<decimal>();
+
+		while (await reader.ReadAsync())
+		{
+			names.Add(reader.GetString(0));
+			prices.Add(reader.GetDecimal(1));
+		}
+
+		names.Should().HaveCount(2);
+		names[0].Should().Be("Async Reader Product 1");
+		names[1].Should().Be("Async Reader Product 2");
+		prices[0].Should().Be(15.00m);
+		prices[1].Should().Be(25.00m);
+	}
+
+	[Fact]
+	public async Task ExecuteReaderAsync_WithParameters_ShouldFilterResults()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Active Product",
+			Price = 30.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Inactive Product",
+			Price = 40.00m,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		await using var reader = await _dbService.ExecuteReaderAsync(
+			"SELECT name FROM test_products WHERE is_active = @IsActive",
+			new { IsActive = true });
+
+		var names = new List<string>();
+		while (await reader.ReadAsync())
+		{
+			names.Add(reader.GetString(0));
+		}
+
+		names.Should().HaveCount(1);
+		names[0].Should().Be("Active Product");
+	}
+
+	#endregion
+
+	#region <=== ExecuteScalar Tests ===>
+
+	[Fact]
+	public void ExecuteScalar_ShouldReturnSingleValue()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Scalar Product 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Scalar Product 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var count = _dbService.ExecuteScalar<int>("SELECT COUNT(*) FROM test_products");
+
+		count.Should().Be(2);
+	}
+
+	[Fact]
+	public void ExecuteScalar_WithParameters_ShouldReturnFilteredValue()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Low Price",
+			Price = 5.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "High Price",
+			Price = 100.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var sum = _dbService.ExecuteScalar<decimal>(
+			"SELECT SUM(price) FROM test_products WHERE price > @MinPrice",
+			new { MinPrice = 10.00m });
+
+		sum.Should().Be(100.00m);
+	}
+
+	[Fact]
+	public void ExecuteScalar_WithNoResults_ShouldReturnDefault()
+	{
+		var result = _dbService.ExecuteScalar<int?>(
+			"SELECT quantity FROM test_products WHERE name = @Name",
+			new { Name = "NonExistent" });
+
+		result.Should().BeNull();
+	}
+
+	[Fact]
+	public void ExecuteScalar_ShouldReturnStringValue()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "First Product",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var name = _dbService.ExecuteScalar<string>(
+			"SELECT name FROM test_products ORDER BY created_at LIMIT 1");
+
+		name.Should().Be("First Product");
+	}
+
+	[Fact]
+	public async Task ExecuteScalarAsync_ShouldReturnSingleValue()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async Scalar 1",
+			Price = 15.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async Scalar 2",
+			Price = 25.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async Scalar 3",
+			Price = 35.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var count = await _dbService.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM test_products");
+
+		count.Should().Be(3);
+	}
+
+	[Fact]
+	public async Task ExecuteScalarAsync_WithParameters_ShouldReturnAggregateValue()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product A",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product B",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product C",
+			Price = 30.00m,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var avgPrice = await _dbService.ExecuteScalarAsync<decimal>(
+			"SELECT AVG(price) FROM test_products WHERE is_active = @IsActive",
+			new { IsActive = true });
+
+		avgPrice.Should().Be(15.00m);
+	}
+
+	[Fact]
+	public async Task ExecuteScalarAsync_ShouldReturnMaxValue()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Cheap",
+			Price = 5.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Medium",
+			Price = 50.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Expensive",
+			Price = 500.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var maxPrice = await _dbService.ExecuteScalarAsync<decimal>("SELECT MAX(price) FROM test_products");
+
+		maxPrice.Should().Be(500.00m);
+	}
+
+	#endregion
+
+	#region <=== GetDataTable Tests ===>
+
+	[Fact]
+	public void GetDataTable_ShouldReturnDataTable()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "DataTable Product 1",
+			Price = 10.00m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "DataTable Product 2",
+			Price = 20.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = _dbService.GetDataTable("SELECT name, price, quantity FROM test_products ORDER BY price");
+
+		dataTable.Should().NotBeNull();
+		dataTable.Rows.Count.Should().Be(2);
+		dataTable.Columns.Count.Should().Be(3);
+		dataTable.Columns[0].ColumnName.Should().Be("name");
+		dataTable.Columns[1].ColumnName.Should().Be("price");
+		dataTable.Columns[2].ColumnName.Should().Be("quantity");
+
+		dataTable.Rows[0]["name"].Should().Be("DataTable Product 1");
+		dataTable.Rows[0]["price"].Should().Be(10.00m);
+		dataTable.Rows[0]["quantity"].Should().Be(5);
+
+		dataTable.Rows[1]["name"].Should().Be("DataTable Product 2");
+		dataTable.Rows[1]["price"].Should().Be(20.00m);
+		dataTable.Rows[1]["quantity"].Should().Be(10);
+	}
+
+	[Fact]
+	public void GetDataTable_WithParameters_ShouldFilterResults()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Active DataTable Product",
+			Price = 15.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Inactive DataTable Product",
+			Price = 25.00m,
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = _dbService.GetDataTable(
+			"SELECT name, price FROM test_products WHERE is_active = @IsActive",
+			new { IsActive = true });
+
+		dataTable.Rows.Count.Should().Be(1);
+		dataTable.Rows[0]["name"].Should().Be("Active DataTable Product");
+		dataTable.Rows[0]["price"].Should().Be(15.00m);
+	}
+
+	[Fact]
+	public void GetDataTable_WithNoResults_ShouldReturnEmptyDataTable()
+	{
+		var dataTable = _dbService.GetDataTable("SELECT name FROM test_products WHERE 1 = 0");
+
+		dataTable.Should().NotBeNull();
+		dataTable.Rows.Count.Should().Be(0);
+	}
+
+	[Fact]
+	public void GetDataTable_WithAllColumns_ShouldReturnAllData()
+	{
+		_dbService.Insert(new TestProduct
+		{
+			Name = "Full Data Product",
+			Description = "A test description",
+			Price = 99.99m,
+			Quantity = 50,
+			IsActive = true,
+			Status = ProductStatus.Active,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = _dbService.GetDataTable("SELECT * FROM test_products");
+
+		dataTable.Rows.Count.Should().Be(1);
+		dataTable.Columns.Should().Contain(c => c.ColumnName == "name");
+		dataTable.Columns.Should().Contain(c => c.ColumnName == "price");
+		dataTable.Columns.Should().Contain(c => c.ColumnName == "quantity");
+		dataTable.Columns.Should().Contain(c => c.ColumnName == "is_active");
+	}
+
+	[Fact]
+	public async Task GetDataTableAsync_ShouldReturnDataTable()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async DataTable 1",
+			Price = 30.00m,
+			Quantity = 15,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Async DataTable 2",
+			Price = 40.00m,
+			Quantity = 20,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = await _dbService.GetDataTableAsync(
+			"SELECT name, price, quantity FROM test_products ORDER BY price");
+
+		dataTable.Should().NotBeNull();
+		dataTable.Rows.Count.Should().Be(2);
+		dataTable.Columns.Count.Should().Be(3);
+
+		dataTable.Rows[0]["name"].Should().Be("Async DataTable 1");
+		dataTable.Rows[0]["price"].Should().Be(30.00m);
+		dataTable.Rows[0]["quantity"].Should().Be(15);
+
+		dataTable.Rows[1]["name"].Should().Be("Async DataTable 2");
+		dataTable.Rows[1]["price"].Should().Be(40.00m);
+		dataTable.Rows[1]["quantity"].Should().Be(20);
+	}
+
+	[Fact]
+	public async Task GetDataTableAsync_WithParameters_ShouldFilterResults()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Cheap Async Product",
+			Price = 5.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Expensive Async Product",
+			Price = 500.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = await _dbService.GetDataTableAsync(
+			"SELECT name, price FROM test_products WHERE price > @MinPrice",
+			new { MinPrice = 100.00m });
+
+		dataTable.Rows.Count.Should().Be(1);
+		dataTable.Rows[0]["name"].Should().Be("Expensive Async Product");
+		dataTable.Rows[0]["price"].Should().Be(500.00m);
+	}
+
+	[Fact]
+	public async Task GetDataTableAsync_WithNoResults_ShouldReturnEmptyDataTable()
+	{
+		var dataTable = await _dbService.GetDataTableAsync(
+			"SELECT name FROM test_products WHERE name = @Name",
+			new { Name = "NonExistentProduct" });
+
+		dataTable.Should().NotBeNull();
+		dataTable.Rows.Count.Should().Be(0);
+	}
+
+	[Fact]
+	public async Task GetDataTableAsync_WithNullValues_ShouldHandleNullsCorrectly()
+	{
+		await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product With Nulls",
+			Description = null,
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var dataTable = await _dbService.GetDataTableAsync(
+			"SELECT name, description FROM test_products");
+
+		dataTable.Rows.Count.Should().Be(1);
+		dataTable.Rows[0]["name"].Should().Be("Product With Nulls");
+		dataTable.Rows[0]["description"].Should().Be(DBNull.Value);
+	}
+
+	#endregion
+
 	#region <=== Transaction Tests ===>
 
 	[Fact]

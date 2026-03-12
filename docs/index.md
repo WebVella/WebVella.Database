@@ -10,12 +10,13 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
 4. [Sample Entity Models](#sample-entity-models)
 5. [Basic CRUD Operations](#basic-crud-operations)
 6. [Query Methods](#query-methods)
-7. [Multi-Query Methods](#multi-query-methods)
-8. [QueryWithJoin Methods](#querywith-join-methods)
-9. [Transaction Management](#transaction-management)
-10. [Advisory Locks](#advisory-locks)
-11. [Caching](#caching)
-12. [Best Practices](#best-practices)
+7. [Execute Methods](#execute-methods)
+8. [Multi-Query Methods](#multi-query-methods)
+9. [QueryWithJoin Methods](#querywith-join-methods)
+10. [Transaction Management](#transaction-management)
+11. [Advisory Locks](#advisory-locks)
+12. [Caching](#caching)
+13. [Best Practices](#best-practices)
 
 ---
 
@@ -722,6 +723,10 @@ var summaries = await _db.QueryAsync<UserSummary>(
 var users = _db.Query<User>("SELECT * FROM users WHERE is_active = true");
 ```
 
+---
+
+## Execute Methods
+
 ### Execute (INSERT, UPDATE, DELETE)
 
 ```csharp
@@ -757,6 +762,136 @@ await _db.ExecuteAsync(
 // Sync version
 int affected = _db.Execute("UPDATE users SET is_active = false WHERE id = @Id", new { Id = userId });
 ```
+
+### ExecuteScalar
+
+Returns the first column of the first row from a query result.
+
+```csharp
+// Get count
+int count = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users WHERE is_active = true");
+
+// Get sum with parameters
+decimal totalRevenue = await _db.ExecuteScalarAsync<decimal>(
+    "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = @Status",
+    new { Status = OrderStatus.Delivered });
+
+// Get max value
+decimal maxPrice = await _db.ExecuteScalarAsync<decimal>("SELECT MAX(price) FROM products");
+
+// Get single value
+string? email = await _db.ExecuteScalarAsync<string>(
+    "SELECT email FROM users WHERE id = @UserId",
+    new { UserId = userId });
+
+// Returns null/default when no results
+int? result = await _db.ExecuteScalarAsync<int?>(
+    "SELECT quantity FROM products WHERE id = @Id",
+    new { Id = Guid.NewGuid() }); // null if not found
+
+// Check existence
+bool exists = await _db.ExecuteScalarAsync<bool>(
+    "SELECT EXISTS(SELECT 1 FROM users WHERE email = @Email)",
+    new { Email = "test@example.com" });
+
+// Sync version
+int count = _db.ExecuteScalar<int>("SELECT COUNT(*) FROM users");
+```
+
+### ExecuteReader
+
+Returns a data reader for low-level row-by-row processing.
+
+```csharp
+// Read rows manually with async reader
+await using var reader = await _db.ExecuteReaderAsync(
+    "SELECT id, username, email FROM users WHERE is_active = @IsActive ORDER BY username",
+    new { IsActive = true });
+
+var users = new List<(Guid Id, string Username, string Email)>();
+while (await reader.ReadAsync())
+{
+    users.Add((
+        reader.GetGuid(0),
+        reader.GetString(1),
+        reader.GetString(2)
+    ));
+}
+
+// Sync version
+using var reader = _db.ExecuteReader("SELECT name, price FROM products ORDER BY price");
+
+while (reader.Read())
+{
+    Console.WriteLine($"{reader.GetString(0)}: ${reader.GetDecimal(1)}");
+}
+
+// Process large datasets without loading all into memory
+await using var reader = await _db.ExecuteReaderAsync(
+    "SELECT * FROM large_table WHERE created_at > @Since",
+    new { Since = DateTime.UtcNow.AddDays(-30) });
+
+while (await reader.ReadAsync())
+{
+    await ProcessRowAsync(reader);
+}
+```
+
+### GetDataTable
+
+Returns query results as a DataTable for scenarios requiring tabular data manipulation.
+
+```csharp
+// Get data as DataTable
+var dataTable = await _db.GetDataTableAsync(
+    "SELECT name, price, quantity FROM products WHERE is_active = true ORDER BY name");
+
+Console.WriteLine($"Rows: {dataTable.Rows.Count}");
+Console.WriteLine($"Columns: {string.Join(", ", dataTable.Columns.Cast<DataColumn>().Select(c => c.ColumnName))}");
+
+// Access data
+foreach (DataRow row in dataTable.Rows)
+{
+    Console.WriteLine($"{row["name"]}: ${row["price"]} ({row["quantity"]} in stock)");
+}
+
+// With parameters
+var salesReport = await _db.GetDataTableAsync(
+    """
+    SELECT 
+        DATE(created_at) as sale_date,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_sales
+    FROM orders
+    WHERE created_at BETWEEN @StartDate AND @EndDate
+    GROUP BY DATE(created_at)
+    ORDER BY sale_date
+    """,
+    new { StartDate = startDate, EndDate = endDate });
+
+// Export to CSV, Excel, or other formats
+ExportToCsv(salesReport, "sales_report.csv");
+
+// Sync version
+var dataTable = _db.GetDataTable("SELECT * FROM categories ORDER BY sort_order");
+
+// Handle NULL values
+var products = await _db.GetDataTableAsync("SELECT name, description FROM products");
+foreach (DataRow row in products.Rows)
+{
+    string name = row["name"].ToString()!;
+    string description = row["description"] == DBNull.Value ? "N/A" : row["description"].ToString()!;
+}
+```
+
+### When to Use Each Method
+
+| Method | Use Case |
+|--------|----------|
+| `Execute` | INSERT, UPDATE, DELETE operations; need affected row count |
+| `ExecuteScalar` | Single value queries (COUNT, SUM, MAX, EXISTS, single column) |
+| `ExecuteReader` | Large datasets; streaming; row-by-row processing |
+| `GetDataTable` | Reporting; data export; grid binding; dynamic column handling |
 
 ---
 
@@ -1368,6 +1503,12 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `QueryWithJoinAsync<TParent, TChild1, TChild2>` | Async version with two children |
 | `Execute` | Execute command, return affected rows |
 | `ExecuteAsync` | Async version of Execute |
+| `ExecuteReader` | Execute query and return IDataReader |
+| `ExecuteReaderAsync` | Async version, returns DbDataReader |
+| `ExecuteScalar<T>` | Execute query and return first column of first row |
+| `ExecuteScalarAsync<T>` | Async version of ExecuteScalar |
+| `GetDataTable` | Execute query and return DataTable |
+| `GetDataTableAsync` | Async version of GetDataTable |
 | `Insert<T>` | Insert entity, return inserted entity with generated keys |
 | `InsertAsync<T>` | Async version of Insert |
 | `Update<T>` | Update entity (all or specific properties) |
@@ -1396,6 +1537,11 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 ---
 
 ## Version History
+
+### v1.1.0
+- Added `ExecuteScalar<T>` and `ExecuteScalarAsync<T>` methods for single value queries
+- Added `ExecuteReader` and `ExecuteReaderAsync` methods for low-level data reading
+- Added `GetDataTable` and `GetDataTableAsync` methods for DataTable results
 
 ### v1.0.0
 - Initial release with full CRUD support

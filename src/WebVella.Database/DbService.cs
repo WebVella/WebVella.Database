@@ -212,6 +212,56 @@ public interface IDbService
 	/// <returns>The number of affected rows.</returns>
 	Task<int> ExecuteAsync(string sql, object? parameters = null);
 
+	/// <summary>
+	/// Executes a query and returns an <see cref="IDataReader"/> for reading the result set.
+	/// </summary>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>An <see cref="IDataReader"/> for reading the result set.</returns>
+	IDataReader ExecuteReader(string sql, object? parameters = null);
+
+	/// <summary>
+	/// Asynchronously executes a query and returns a <see cref="DbDataReader"/> for reading the result set.
+	/// </summary>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A <see cref="DbDataReader"/> for reading the result set.</returns>
+	Task<DbDataReader> ExecuteReaderAsync(string sql, object? parameters = null);
+
+	/// <summary>
+	/// Executes a query and returns the first column of the first row as the specified type.
+	/// </summary>
+	/// <typeparam name="T">The type to return.</typeparam>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>The first column of the first row, or default if no results.</returns>
+	T? ExecuteScalar<T>(string sql, object? parameters = null);
+
+	/// <summary>
+	/// Asynchronously executes a query and returns the first column of the first row as the specified type.
+	/// </summary>
+	/// <typeparam name="T">The type to return.</typeparam>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>The first column of the first row, or default if no results.</returns>
+	Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null);
+
+	/// <summary>
+	/// Executes a query and fills a <see cref="DataTable"/> with the result set.
+	/// </summary>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A <see cref="DataTable"/> containing the result set.</returns>
+	DataTable GetDataTable(string sql, object? parameters = null);
+
+	/// <summary>
+	/// Asynchronously executes a query and fills a <see cref="DataTable"/> with the result set.
+	/// </summary>
+	/// <param name="sql">The SQL query to execute.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A <see cref="DataTable"/> containing the result set.</returns>
+	Task<DataTable> GetDataTableAsync(string sql, object? parameters = null);
+
 	#endregion
 
 	#region <=== Insert ===>
@@ -976,6 +1026,68 @@ public class DbService : IDbService
 
 		var affected = await npgsqlConn.ExecuteAsync(sql, parameters, transaction: null);
 		return affected;
+	}
+
+	/// <inheritdoc/>
+	public IDataReader ExecuteReader(string sql, object? parameters = null)
+	{
+		var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		return npgsqlConn.ExecuteReader(sql, parameters, transaction: null, commandTimeout: null,
+			commandType: null);
+	}
+
+	/// <inheritdoc/>
+	public async Task<DbDataReader> ExecuteReaderAsync(string sql, object? parameters = null)
+	{
+		var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		return await npgsqlConn.ExecuteReaderAsync(sql, parameters, transaction: null, commandTimeout: null,
+			commandType: null);
+	}
+
+	/// <inheritdoc/>
+	public T? ExecuteScalar<T>(string sql, object? parameters = null)
+	{
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		return npgsqlConn.ExecuteScalar<T>(sql, parameters, transaction: null);
+	}
+
+	/// <inheritdoc/>
+	public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null)
+	{
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		return await npgsqlConn.ExecuteScalarAsync<T>(sql, parameters, transaction: null);
+	}
+
+	/// <inheritdoc/>
+	public DataTable GetDataTable(string sql, object? parameters = null)
+	{
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		using var reader = npgsqlConn.ExecuteReader(sql, parameters, transaction: null);
+		var dataTable = new DataTable();
+		dataTable.Load(reader);
+		return dataTable;
+	}
+
+	/// <inheritdoc/>
+	public async Task<DataTable> GetDataTableAsync(string sql, object? parameters = null)
+	{
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		await using var reader = await npgsqlConn.ExecuteReaderAsync(sql, parameters, transaction: null);
+		var dataTable = new DataTable();
+		dataTable.Load(reader);
+		return dataTable;
 	}
 
 	#endregion
