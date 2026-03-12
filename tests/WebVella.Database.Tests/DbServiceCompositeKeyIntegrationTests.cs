@@ -1234,5 +1234,167 @@ public class DbServiceCompositeKeyIntegrationTests : IAsyncLifetime
         items.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_ShouldDeleteEntity()
+    {
+        var orderItem = new TestOrderItem
+        {
+            Quantity = 15,
+            UnitPrice = 50.00m,
+            TotalPrice = 750.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var inserted = await _dbService.InsertAsync(orderItem);
+
+        var deleted = await _dbService.DeleteAsync<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+
+        deleted.Should().BeTrue();
+
+        var retrieved = await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+        retrieved.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_NonExistent_ShouldReturnFalse()
+    {
+        var deleted = await _dbService.DeleteAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = Guid.NewGuid() });
+
+        deleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_MissingProperty_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.DeleteAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid() });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Missing key property 'ProductId'*");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_InvalidPropertyType_ShouldThrowArgumentException()
+    {
+        var act = async () => await _dbService.DeleteAsync<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = "invalid-guid" });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Property 'ProductId' must be of type Guid*");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_NullKeys_ShouldThrowArgumentNullException()
+    {
+        var act = async () => await _dbService.DeleteAsync<TestOrderItem>((object)null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithAnonymousObject_ShouldOnlyDeleteMatchingEntity()
+    {
+        var item1 = new TestOrderItem
+        {
+            Quantity = 77,
+            UnitPrice = 10.00m,
+            TotalPrice = 770.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item2 = new TestOrderItem
+        {
+            Quantity = 88,
+            UnitPrice = 20.00m,
+            TotalPrice = 1760.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var inserted1 = await _dbService.InsertAsync(item1);
+        var inserted2 = await _dbService.InsertAsync(item2);
+
+        var deleted = await _dbService.DeleteAsync<TestOrderItem>(
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId });
+
+        deleted.Should().BeTrue();
+
+        var retrieved1 = await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId });
+        var retrieved2 = await _dbService.GetAsync<TestOrderItem>(
+            new { OrderId = inserted2.OrderId, ProductId = inserted2.ProductId });
+
+        retrieved1.Should().BeNull();
+        retrieved2.Should().NotBeNull();
+        retrieved2!.Quantity.Should().Be(88);
+    }
+
+    [Fact]
+    public void Delete_WithAnonymousObject_ShouldDeleteEntity()
+    {
+        var orderItem = new TestOrderItem
+        {
+            Quantity = 25,
+            UnitPrice = 60.00m,
+            TotalPrice = 1500.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var inserted = _dbService.Insert(orderItem);
+
+        var deleted = _dbService.Delete<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+
+        deleted.Should().BeTrue();
+
+        var retrieved = _dbService.Get<TestOrderItem>(
+            new { OrderId = inserted.OrderId, ProductId = inserted.ProductId });
+        retrieved.Should().BeNull();
+    }
+
+    [Fact]
+    public void Delete_WithAnonymousObject_NonExistent_ShouldReturnFalse()
+    {
+        var deleted = _dbService.Delete<TestOrderItem>(
+            new { OrderId = Guid.NewGuid(), ProductId = Guid.NewGuid() });
+
+        deleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Delete_WithAnonymousObject_ShouldOnlyDeleteMatchingEntity()
+    {
+        var item1 = new TestOrderItem
+        {
+            Quantity = 99,
+            UnitPrice = 10.00m,
+            TotalPrice = 990.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+        var item2 = new TestOrderItem
+        {
+            Quantity = 111,
+            UnitPrice = 20.00m,
+            TotalPrice = 2220.00m,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var inserted1 = _dbService.Insert(item1);
+        var inserted2 = _dbService.Insert(item2);
+
+        var deleted = _dbService.Delete<TestOrderItem>(
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId });
+
+        deleted.Should().BeTrue();
+
+        var retrieved1 = _dbService.Get<TestOrderItem>(
+            new { OrderId = inserted1.OrderId, ProductId = inserted1.ProductId });
+        var retrieved2 = _dbService.Get<TestOrderItem>(
+            new { OrderId = inserted2.OrderId, ProductId = inserted2.ProductId });
+
+        retrieved1.Should().BeNull();
+        retrieved2.Should().NotBeNull();
+        retrieved2!.Quantity.Should().Be(111);
+    }
+
     #endregion
 }

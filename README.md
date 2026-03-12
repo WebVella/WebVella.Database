@@ -143,6 +143,12 @@ public class UserService
     {
         return await _db.DeleteAsync<User>(id);
     }
+
+    // Delete by composite key using anonymous object
+    public async Task<bool> DeleteUserRoleAsync(Guid userId, Guid roleId)
+    {
+        return await _db.DeleteAsync<UserRole>(new { UserId = userId, RoleId = roleId });
+    }
 }
 ```
 

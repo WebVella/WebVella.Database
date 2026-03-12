@@ -312,6 +312,23 @@ public interface IDbService
 	/// <returns>True if the entity was deleted; otherwise, false.</returns>
 	Task<bool> DeleteAsync<T>(Dictionary<string, Guid> keys) where T : class;
 
+	/// <summary>
+	/// Deletes an entity from the database by its composite primary key using an anonymous object.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keys">An anonymous object with properties matching the key property names and Guid values.</param>
+	/// <returns>True if the entity was deleted; otherwise, false.</returns>
+	bool Delete<T>(object keys) where T : class;
+
+	/// <summary>
+	/// Asynchronously deletes an entity from the database by its composite primary key using an anonymous
+	/// object.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="keys">An anonymous object with properties matching the key property names and Guid values.</param>
+	/// <returns>True if the entity was deleted; otherwise, false.</returns>
+	Task<bool> DeleteAsync<T>(object keys) where T : class;
+
 	#endregion
 
 	#region <=== Get ===>
@@ -1345,6 +1362,22 @@ public class DbService : IDbService
 		}
 
 		return affected > 0;
+	}
+
+	/// <inheritdoc/>
+	public bool Delete<T>(object keys) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+		var keysDictionary = ConvertToKeysDictionary(keys);
+		return Delete<T>(keysDictionary);
+	}
+
+	/// <inheritdoc/>
+	public async Task<bool> DeleteAsync<T>(object keys) where T : class
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+		var keysDictionary = ConvertToKeysDictionary(keys);
+		return await DeleteAsync<T>(keysDictionary);
 	}
 
 	#endregion

@@ -641,7 +641,7 @@ bool deleted = await _db.DeleteAsync(user);
 // Delete by single key (more efficient)
 bool deleted = await _db.DeleteAsync<User>(userId);
 
-// Delete by composite key
+// Delete by composite key using dictionary
 var keys = new Dictionary<string, Guid>
 {
     ["UserId"] = userId,
@@ -649,10 +649,14 @@ var keys = new Dictionary<string, Guid>
 };
 bool deleted = await _db.DeleteAsync<UserRole>(keys);
 
+// Delete by composite key using anonymous object (simpler syntax)
+bool deleted = await _db.DeleteAsync<UserRole>(new { UserId = userId, RoleId = roleId });
+
 // Sync versions
 bool deleted = _db.Delete(user);
 bool deleted = _db.Delete<User>(userId);
 bool deleted = _db.Delete<UserRole>(keys);
+bool deleted = _db.Delete<UserRole>(new { UserId = userId, RoleId = roleId });
 
 // Delete returns false if entity not found
 bool deleted = await _db.DeleteAsync<User>(Guid.NewGuid()); // false
@@ -1368,8 +1372,11 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `InsertAsync<T>` | Async version of Insert |
 | `Update<T>` | Update entity (all or specific properties) |
 | `UpdateAsync<T>` | Async version of Update |
-| `Delete<T>` | Delete entity by entity, single key, or composite key |
-| `DeleteAsync<T>` | Async version of Delete |
+| `Delete<T>(T)` | Delete entity by entity reference |
+| `Delete<T>(Guid)` | Delete entity by single key |
+| `Delete<T>(Dictionary)` | Delete entity by composite key using dictionary |
+| `Delete<T>(object)` | Delete entity by composite key using anonymous object |
+| `DeleteAsync<T>` | Async versions of Delete (4 overloads) |
 | `Get<T>(Guid)` | Get entity by single key |
 | `Get<T>(Dictionary)` | Get entity by composite key using dictionary |
 | `Get<T>(object)` | Get entity by composite key using anonymous object |
