@@ -10,7 +10,7 @@
 		<PackageId>$(AssemblyName)</PackageId>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<Description>A lightweight, high-performance Postgres data access library built on Dapper. It simplifies data object mapping, migrations and complex database workflows by providing first-class support for nested transactions and effortless advisory lock management.</Description>
-		<Version>1.0.0</Version>
+		<Version>1.1.0</Version>
 		<Authors>WebVella</Authors>
 		<Company>WebVella</Company>
 		<Copyright>WebVella 2026</Copyright>
