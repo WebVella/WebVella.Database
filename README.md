@@ -221,7 +221,140 @@ await lockScope.CompleteAsync();
 | `[Write(false)]` | Controls whether a property is written to the database |
 | `[JsonColumn]` | Property is serialized/deserialized as JSON |
 | `[Cacheable]` | Enables entity caching with automatic invalidation |
+| `[MultiQuery]` | Marks a class as container for multiple result sets |
+| `[ResultSet(index)]` | Maps property to a result set index in multi-query |
 
+## Multi-Query Support
+
+### QueryMultiple with Container Class
+
+Use `QueryMultiple<T>` with a container class to map multiple result sets:
+
+```csharp
+[MultiQuery]
+public class UserDashboard
+{
+    [ResultSet(0)]
+    public User? Profile { get; set; }
+
+    [ResultSet(1)]
+    public List<Order> RecentOrders { get; set; } = [];
+
+    [ResultSet(2)]
+    public List<Notification> Alerts { get; set; } = [];
+}
+
+var sql = @"
+    SELECT * FROM users WHERE id = @UserId;
+    SELECT * FROM orders WHERE user_id = @UserId ORDER BY created_at DESC LIMIT 10;
+    SELECT * FROM notifications WHERE user_id = @UserId AND is_read = false;
+";
+
+var dashboard = await _db.QueryMultipleAsync<UserDashboard>(sql, new { UserId = userId });
+```
+
+### QueryMultipleList with Parent-Child Mapping
+
+Use `QueryMultipleList<T>` to fetch a list of parent entities with child collections automatically mapped:
+
+```csharp
+public class Order
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    public string CustomerName { get; set; } = string.Empty;
+
+    public decimal TotalAmount { get; set; }
+
+    [External]
+    [ResultSet(1, ForeignKey = "OrderId")]
+    public List<OrderLine> Lines { get; set; } = [];
+
+    [External]
+    [ResultSet(2, ForeignKey = "OrderId")]
+    public List<OrderNote> Notes { get; set; } = [];
+}
+
+public class OrderLine
+{
+    public Guid Id { get; set; }
+    public Guid OrderId { get; set; }  // Foreign key to Order.Id
+    public string ProductName { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+}
+
+public class OrderNote
+{
+    public Guid Id { get; set; }
+    public Guid OrderId { get; set; }  // Foreign key to Order.Id
+    public string Text { get; set; } = string.Empty;
+}
+
+var sql = @"
+    SELECT * FROM orders WHERE customer_id = @CustomerId;
+    SELECT ol.* FROM order_lines ol 
+        JOIN orders o ON ol.order_id = o.id WHERE o.customer_id = @CustomerId;
+    SELECT n.* FROM order_notes n 
+        JOIN orders o ON n.order_id = o.id WHERE o.customer_id = @CustomerId;
+";
+
+// Each order will have its Lines and Notes collections populated
+var orders = await _db.QueryMultipleListAsync<Order>(sql, new { CustomerId = customerId });
+```
+
+The `[ResultSet]` attribute supports:
+- `Index` - The result set index (0-based, first result set is parent entities)
+- `ForeignKey` - The property name in child entity that references parent's key
+- `ParentKey` - The parent's key property name (defaults to "Id")
+
+### QueryWithJoin for Single Query Mapping
+
+Use `QueryWithJoin` when you want to use a single SQL query with JOINs instead of multiple result sets:
+
+```csharp
+// Single child collection
+var sql = @"
+    SELECT o.*, l.*
+    FROM orders o
+    LEFT JOIN order_lines l ON l.order_id = o.id
+    WHERE o.customer_id = @CustomerId
+    ORDER BY o.id, l.id
+";
+
+var orders = await _db.QueryWithJoinAsync<Order, OrderLine>(
+    sql,
+    parent => parent.Lines,           // Child collection selector
+    parent => parent.Id,              // Parent key selector
+    child => child.Id,                // Child primary key selector (for deduplication)
+    splitOn: "Id",                    // Column to split results on
+    parameters: new { CustomerId = customerId });
+```
+
+```csharp
+// Two child collections (handles Cartesian product deduplication)
+var sql = @"
+    SELECT o.*, l.*, n.*
+    FROM orders o
+    LEFT JOIN order_lines l ON l.order_id = o.id
+    LEFT JOIN order_notes n ON n.order_id = o.id
+    ORDER BY o.id
+";
+
+var orders = await _db.QueryWithJoinAsync<Order, OrderLine, OrderNote>(
+    sql,
+    parent => parent.Lines,
+    parent => parent.Notes,
+    parent => parent.Id,
+    child1 => child1.Id,              // Child1 primary key (for deduplication)
+    child2 => child2.Id,              // Child2 primary key (for deduplication)
+    splitOn: "Id,Id");
+```
+
+**Note:** The `splitOn` parameter tells Dapper where to split the columns between entity types. For multiple children, use comma-separated column names. The child key selectors should return each child's unique identifier (primary key) for proper deduplication when JOINs produce Cartesian products.
+
+## Documentation
+[View complete documentation](./documentation.md)
 
 ## License
 [![Library license details](https://img.shields.io/badge/%F0%9F%93%9C%0A%20read-license%20details-blue?style=for-the-badge)](https://github.com/WebVella/WebVella.Database/blob/main/LICENSE/)

@@ -26,6 +26,172 @@ public interface IDbService
 	/// <returns>A collection of the specified type.</returns>
 	Task<IEnumerable<T>> QueryAsync<T>(string sql, object? parameters = null) where T : class;
 
+	/// <summary>
+	/// Executes a query with multiple result sets and maps each result set to a property
+	/// in the container type based on the <see cref="ResultSetAttribute"/> index.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The container type marked with <see cref="MultiQueryAttribute"/> containing properties
+	/// decorated with <see cref="ResultSetAttribute"/>.
+	/// </typeparam>
+	/// <param name="sql">The SQL query containing multiple SELECT statements.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>An instance of the container type with mapped result sets.</returns>
+	T QueryMultiple<T>(string sql, object? parameters = null) where T : class, new();
+
+	/// <summary>
+	/// Asynchronously executes a query with multiple result sets and maps each result set to a property
+	/// in the container type based on the <see cref="ResultSetAttribute"/> index.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The container type marked with <see cref="MultiQueryAttribute"/> containing properties
+	/// decorated with <see cref="ResultSetAttribute"/>.
+	/// </typeparam>
+	/// <param name="sql">The SQL query containing multiple SELECT statements.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>An instance of the container type with mapped result sets.</returns>
+	Task<T> QueryMultipleAsync<T>(string sql, object? parameters = null) where T : class, new();
+
+	/// <summary>
+	/// Executes a query with multiple result sets where the first result set contains parent entities
+	/// and subsequent result sets contain child entities mapped via <see cref="ResultSetAttribute.ForeignKey"/>.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The entity type containing properties decorated with <see cref="ResultSetAttribute"/>
+	/// that specify ForeignKey for child mapping.
+	/// </typeparam>
+	/// <param name="sql">The SQL query containing multiple SELECT statements.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	List<T> QueryMultipleList<T>(string sql, object? parameters = null) where T : class, new();
+
+	/// <summary>
+	/// Asynchronously executes a query with multiple result sets where the first result set contains
+	/// parent entities and subsequent result sets contain child entities mapped via
+	/// <see cref="ResultSetAttribute.ForeignKey"/>.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The entity type containing properties decorated with <see cref="ResultSetAttribute"/>
+	/// that specify ForeignKey for child mapping.
+	/// </typeparam>
+	/// <param name="sql">The SQL query containing multiple SELECT statements.</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	Task<List<T>> QueryMultipleListAsync<T>(string sql, object? parameters = null) where T : class, new();
+
+	/// <summary>
+	/// Executes a JOIN query and maps the result to parent entities with a single child collection.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild">The child entity type.</typeparam>
+	/// <param name="sql">The SQL query with JOIN.</param>
+	/// <param name="childSelector">
+	/// Function to get the child collection property from the parent.
+	/// </param>
+	/// <param name="parentKeySelector">Function to get the key value from the parent.</param>
+	/// <param name="childKeySelector">
+	/// Function to get the unique key (primary key) from the child for deduplication.
+	/// </param>
+	/// <param name="splitOn">The column name to split the result on (default: "Id").</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	List<TParent> QueryWithJoin<TParent, TChild>(
+		string sql,
+		Func<TParent, IList<TChild>> childSelector,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild, object> childKeySelector,
+		string splitOn = "Id",
+		object? parameters = null)
+		where TParent : class where TChild : class;
+
+	/// <summary>
+	/// Asynchronously executes a JOIN query and maps the result to parent entities with a single child
+	/// collection.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild">The child entity type.</typeparam>
+	/// <param name="sql">The SQL query with JOIN.</param>
+	/// <param name="childSelector">
+	/// Function to get the child collection property from the parent.
+	/// </param>
+	/// <param name="parentKeySelector">Function to get the key value from the parent.</param>
+	/// <param name="childKeySelector">
+	/// Function to get the unique key (primary key) from the child for deduplication.
+	/// </param>
+	/// <param name="splitOn">The column name to split the result on (default: "Id").</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	Task<List<TParent>> QueryWithJoinAsync<TParent, TChild>(
+		string sql,
+		Func<TParent, IList<TChild>> childSelector,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild, object> childKeySelector,
+		string splitOn = "Id",
+		object? parameters = null)
+		where TParent : class where TChild : class;
+
+	/// <summary>
+	/// Executes a JOIN query and maps the result to parent entities with two child collections.
+	/// Handles Cartesian product deduplication automatically.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild1">The first child entity type.</typeparam>
+	/// <typeparam name="TChild2">The second child entity type.</typeparam>
+	/// <param name="sql">The SQL query with JOINs.</param>
+	/// <param name="childSelector1">Function to get the first child collection from the parent.</param>
+	/// <param name="childSelector2">Function to get the second child collection from the parent.</param>
+	/// <param name="parentKeySelector">Function to get the key value from the parent.</param>
+	/// <param name="childKeySelector1">
+	/// Function to get the unique key (primary key) from the first child for deduplication.
+	/// </param>
+	/// <param name="childKeySelector2">
+	/// Function to get the unique key (primary key) from the second child for deduplication.
+	/// </param>
+	/// <param name="splitOn">Comma-separated column names to split the results (e.g., "Id,Id").</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	List<TParent> QueryWithJoin<TParent, TChild1, TChild2>(
+		string sql,
+		Func<TParent, IList<TChild1>> childSelector1,
+		Func<TParent, IList<TChild2>> childSelector2,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild1, object> childKeySelector1,
+		Func<TChild2, object> childKeySelector2,
+		string splitOn = "Id,Id",
+		object? parameters = null)
+		where TParent : class where TChild1 : class where TChild2 : class;
+
+	/// <summary>
+	/// Asynchronously executes a JOIN query and maps the result to parent entities with two child
+	/// collections. Handles Cartesian product deduplication automatically.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild1">The first child entity type.</typeparam>
+	/// <typeparam name="TChild2">The second child entity type.</typeparam>
+	/// <param name="sql">The SQL query with JOINs.</param>
+	/// <param name="childSelector1">Function to get the first child collection from the parent.</param>
+	/// <param name="childSelector2">Function to get the second child collection from the parent.</param>
+	/// <param name="parentKeySelector">Function to get the key value from the parent.</param>
+	/// <param name="childKeySelector1">
+	/// Function to get the unique key (primary key) from the first child for deduplication.
+	/// </param>
+	/// <param name="childKeySelector2">
+	/// Function to get the unique key (primary key) from the second child for deduplication.
+	/// </param>
+	/// <param name="splitOn">Comma-separated column names to split the results (e.g., "Id,Id").</param>
+	/// <param name="parameters">The parameters for the query.</param>
+	/// <returns>A list of parent entities with their child collections populated.</returns>
+	Task<List<TParent>> QueryWithJoinAsync<TParent, TChild1, TChild2>(
+		string sql,
+		Func<TParent, IList<TChild1>> childSelector1,
+		Func<TParent, IList<TChild2>> childSelector2,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild1, object> childKeySelector1,
+		Func<TChild2, object> childKeySelector2,
+		string splitOn = "Id,Id",
+		object? parameters = null)
+		where TParent : class where TChild1 : class where TChild2 : class;
+
 	#endregion
 
 	#region <=== Execute ===>
@@ -341,6 +507,398 @@ public class DbService : IDbService
 
 		var result = await npgsqlConn.QueryAsync<T>(sql, parameters, transaction: null);
 		return result;
+	}
+
+	/// <inheritdoc/>
+	public T QueryMultiple<T>(string sql, object? parameters = null) where T : class, new()
+	{
+		var metadata = MultiQueryMetadata.GetOrCreate<T>();
+
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		using var multi = npgsqlConn.QueryMultiple(sql, parameters, transaction: null);
+
+		var result = new T();
+
+		foreach (var mapping in metadata.ResultSetMappings.OrderBy(m => m.Index))
+		{
+			if (multi.IsConsumed)
+				break;
+
+			var value = mapping.IsCollection
+				? multi.Read(mapping.ElementType).ToListOfType(mapping.ElementType)
+				: multi.ReadFirstOrDefault(mapping.ElementType);
+
+			mapping.Property.SetValue(result, value);
+		}
+
+		return result;
+	}
+
+	/// <inheritdoc/>
+	public async Task<T> QueryMultipleAsync<T>(string sql, object? parameters = null) where T : class, new()
+	{
+		var metadata = MultiQueryMetadata.GetOrCreate<T>();
+
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		using var multi = await npgsqlConn.QueryMultipleAsync(sql, parameters, transaction: null);
+
+		var result = new T();
+
+		foreach (var mapping in metadata.ResultSetMappings.OrderBy(m => m.Index))
+		{
+			if (multi.IsConsumed)
+				break;
+
+			var value = mapping.IsCollection
+				? (await multi.ReadAsync(mapping.ElementType)).ToListOfType(mapping.ElementType)
+				: await multi.ReadFirstOrDefaultAsync(mapping.ElementType);
+
+			mapping.Property.SetValue(result, value);
+		}
+
+		return result;
+	}
+
+	/// <inheritdoc/>
+	public List<T> QueryMultipleList<T>(string sql, object? parameters = null) where T : class, new()
+	{
+		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
+
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		using var multi = npgsqlConn.QueryMultiple(sql, parameters, transaction: null);
+
+		var parents = multi.Read<T>().ToList();
+
+		if (parents.Count == 0)
+			return parents;
+
+		var parentLookup = new Dictionary<object, T>();
+		foreach (var parent in parents)
+		{
+			var keyValue = metadata.ParentKeyProperty.GetValue(parent);
+			if (keyValue != null)
+			{
+				parentLookup[keyValue] = parent;
+			}
+		}
+
+		foreach (var mapping in metadata.ChildMappings)
+		{
+			if (multi.IsConsumed)
+				break;
+
+			var children = multi.Read(mapping.ElementType).ToList();
+			var childrenByParent = new Dictionary<object, System.Collections.IList>();
+
+			foreach (var child in children)
+			{
+				var fkValue = mapping.ForeignKeyProperty?.GetValue(child);
+				if (fkValue == null)
+					continue;
+
+				if (!childrenByParent.TryGetValue(fkValue, out var list))
+				{
+					list = (System.Collections.IList)MultiQueryExtensions.CreateEmptyList(mapping.ElementType);
+					childrenByParent[fkValue] = list;
+				}
+
+				list.Add(child);
+			}
+
+			foreach (var parent in parents)
+			{
+				var keyValue = metadata.ParentKeyProperty.GetValue(parent);
+				if (keyValue != null && childrenByParent.TryGetValue(keyValue, out var childList))
+				{
+					mapping.Property.SetValue(parent, childList);
+				}
+				else
+				{
+					mapping.Property.SetValue(parent, MultiQueryExtensions.CreateEmptyList(mapping.ElementType));
+				}
+			}
+		}
+
+		return parents;
+	}
+
+	/// <inheritdoc/>
+	public async Task<List<T>> QueryMultipleListAsync<T>(string sql, object? parameters = null) where T : class, new()
+	{
+		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
+
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		using var multi = await npgsqlConn.QueryMultipleAsync(sql, parameters, transaction: null);
+
+		var parents = (await multi.ReadAsync<T>()).ToList();
+
+		if (parents.Count == 0)
+			return parents;
+
+		var parentLookup = new Dictionary<object, T>();
+		foreach (var parent in parents)
+		{
+			var keyValue = metadata.ParentKeyProperty.GetValue(parent);
+			if (keyValue != null)
+			{
+				parentLookup[keyValue] = parent;
+			}
+		}
+
+		foreach (var mapping in metadata.ChildMappings)
+		{
+			if (multi.IsConsumed)
+				break;
+
+			var children = (await multi.ReadAsync(mapping.ElementType)).ToList();
+			var childrenByParent = new Dictionary<object, System.Collections.IList>();
+
+			foreach (var child in children)
+			{
+				var fkValue = mapping.ForeignKeyProperty?.GetValue(child);
+				if (fkValue == null)
+					continue;
+
+				if (!childrenByParent.TryGetValue(fkValue, out var list))
+				{
+					list = (System.Collections.IList)MultiQueryExtensions.CreateEmptyList(mapping.ElementType);
+					childrenByParent[fkValue] = list;
+				}
+
+				list.Add(child);
+			}
+
+			foreach (var parent in parents)
+			{
+				var keyValue = metadata.ParentKeyProperty.GetValue(parent);
+				if (keyValue != null && childrenByParent.TryGetValue(keyValue, out var childList))
+				{
+					mapping.Property.SetValue(parent, childList);
+				}
+				else
+				{
+					mapping.Property.SetValue(parent, MultiQueryExtensions.CreateEmptyList(mapping.ElementType));
+				}
+			}
+		}
+
+		return parents;
+	}
+
+	/// <inheritdoc/>
+	public List<TParent> QueryWithJoin<TParent, TChild>(
+		string sql,
+		Func<TParent, IList<TChild>> childSelector,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild, object> childKeySelector,
+		string splitOn = "Id",
+		object? parameters = null)
+		where TParent : class where TChild : class
+	{
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		var parentLookup = new Dictionary<object, TParent>();
+		var childAdded = new HashSet<(object parentKey, object childKey)>();
+
+		npgsqlConn.Query<TParent, TChild, TParent>(
+			sql,
+			(parent, child) =>
+			{
+				var parentKey = parentKeySelector(parent);
+
+				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
+				{
+					existingParent = parent;
+					parentLookup[parentKey] = existingParent;
+				}
+
+				if (child != null)
+				{
+					var childKey = childKeySelector(child);
+					if (childKey != null && childAdded.Add((parentKey, childKey)))
+					{
+						childSelector(existingParent).Add(child);
+					}
+				}
+
+				return existingParent;
+			},
+			parameters,
+			transaction: null,
+			splitOn: splitOn);
+
+		return parentLookup.Values.ToList();
+	}
+
+	/// <inheritdoc/>
+	public async Task<List<TParent>> QueryWithJoinAsync<TParent, TChild>(
+		string sql,
+		Func<TParent, IList<TChild>> childSelector,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild, object> childKeySelector,
+		string splitOn = "Id",
+		object? parameters = null)
+		where TParent : class where TChild : class
+	{
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		var parentLookup = new Dictionary<object, TParent>();
+		var childAdded = new HashSet<(object parentKey, object childKey)>();
+
+		await npgsqlConn.QueryAsync<TParent, TChild, TParent>(
+			sql,
+			(parent, child) =>
+			{
+				var parentKey = parentKeySelector(parent);
+
+				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
+				{
+					existingParent = parent;
+					parentLookup[parentKey] = existingParent;
+				}
+
+				if (child != null)
+				{
+					var childKey = childKeySelector(child);
+					if (childKey != null && childAdded.Add((parentKey, childKey)))
+					{
+						childSelector(existingParent).Add(child);
+					}
+				}
+
+				return existingParent;
+			},
+			parameters,
+			transaction: null,
+			splitOn: splitOn);
+
+		return parentLookup.Values.ToList();
+	}
+
+	/// <inheritdoc/>
+	public List<TParent> QueryWithJoin<TParent, TChild1, TChild2>(
+		string sql,
+		Func<TParent, IList<TChild1>> childSelector1,
+		Func<TParent, IList<TChild2>> childSelector2,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild1, object> childKeySelector1,
+		Func<TChild2, object> childKeySelector2,
+		string splitOn = "Id,Id",
+		object? parameters = null)
+		where TParent : class where TChild1 : class where TChild2 : class
+	{
+		using var conn = CreateConnection();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		var parentLookup = new Dictionary<object, TParent>();
+		var child1Added = new HashSet<(object parentKey, object childKey)>();
+		var child2Added = new HashSet<(object parentKey, object childKey)>();
+
+		npgsqlConn.Query<TParent, TChild1, TChild2, TParent>(
+			sql,
+			(parent, child1, child2) =>
+			{
+				var parentKey = parentKeySelector(parent);
+
+				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
+				{
+					existingParent = parent;
+					parentLookup[parentKey] = existingParent;
+				}
+
+				if (child1 != null)
+				{
+					var childKey1 = childKeySelector1(child1);
+					if (childKey1 != null && child1Added.Add((parentKey, childKey1)))
+					{
+						childSelector1(existingParent).Add(child1);
+					}
+				}
+
+				if (child2 != null)
+				{
+					var childKey2 = childKeySelector2(child2);
+					if (childKey2 != null && child2Added.Add((parentKey, childKey2)))
+					{
+						childSelector2(existingParent).Add(child2);
+					}
+				}
+
+				return existingParent;
+			},
+			parameters,
+			transaction: null,
+			splitOn: splitOn);
+
+		return parentLookup.Values.ToList();
+	}
+
+	/// <inheritdoc/>
+	public async Task<List<TParent>> QueryWithJoinAsync<TParent, TChild1, TChild2>(
+		string sql,
+		Func<TParent, IList<TChild1>> childSelector1,
+		Func<TParent, IList<TChild2>> childSelector2,
+		Func<TParent, object> parentKeySelector,
+		Func<TChild1, object> childKeySelector1,
+		Func<TChild2, object> childKeySelector2,
+		string splitOn = "Id,Id",
+		object? parameters = null)
+		where TParent : class where TChild1 : class where TChild2 : class
+	{
+		await using var conn = await CreateConnectionAsync();
+		var npgsqlConn = conn.GetUnderlyingConnection();
+
+		var parentLookup = new Dictionary<object, TParent>();
+		var child1Added = new HashSet<(object parentKey, object childKey)>();
+		var child2Added = new HashSet<(object parentKey, object childKey)>();
+
+		await npgsqlConn.QueryAsync<TParent, TChild1, TChild2, TParent>(
+			sql,
+			(parent, child1, child2) =>
+			{
+				var parentKey = parentKeySelector(parent);
+
+				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
+				{
+					existingParent = parent;
+					parentLookup[parentKey] = existingParent;
+				}
+
+				if (child1 != null)
+				{
+					var childKey1 = childKeySelector1(child1);
+					if (childKey1 != null && child1Added.Add((parentKey, childKey1)))
+					{
+						childSelector1(existingParent).Add(child1);
+					}
+				}
+
+				if (child2 != null)
+				{
+					var childKey2 = childKeySelector2(child2);
+					if (childKey2 != null && child2Added.Add((parentKey, childKey2)))
+					{
+						childSelector2(existingParent).Add(child2);
+					}
+				}
+
+				return existingParent;
+			},
+			parameters,
+			transaction: null,
+			splitOn: splitOn);
+
+		return parentLookup.Values.ToList();
 	}
 
 	#endregion

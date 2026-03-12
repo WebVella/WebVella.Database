@@ -13,6 +13,12 @@ public class TableAttribute : Attribute
 		Name = name;
 	}
 }
+/// <summary>
+/// Marks a class as a container for multiple result sets.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+public class MultiQueryAttribute : Attribute { }
+
 
 /// <summary>
 /// Indicates that entities of this class should be cached.
@@ -74,6 +80,36 @@ public class ExplicitKeyAttribute : Attribute
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
 public class ExternalAttribute : Attribute
 {
+}
+
+/// <summary>
+/// Maps a property to a specific result set index in a multi-query execution.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+public class ResultSetAttribute : Attribute
+{
+	/// <summary>
+	/// Gets the result set index (0-based).
+	/// </summary>
+	public int Index { get; }
+
+	/// <summary>
+	/// Gets the name of the foreign key property in the child entity that references the parent's key.
+	/// Used by QueryMultipleList to map child entities to their parent.
+	/// </summary>
+	public string? ForeignKey { get; set; }
+
+	/// <summary>
+	/// Gets the name of the parent entity's key property that the foreign key references.
+	/// Defaults to "Id" if not specified.
+	/// </summary>
+	public string ParentKey { get; set; } = "Id";
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="ResultSetAttribute"/> class.
+	/// </summary>
+	/// <param name="index">The result set index (0-based).</param>
+	public ResultSetAttribute(int index) => Index = index;
 }
 
 /// <summary>

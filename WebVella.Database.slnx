@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/docs/">
+    <File Path="docs/documentation.md" />
+  </Folder>
   <Project Path="src/WebVella.Database/WebVella.Database.csproj" />
   <Project Path="tests/WebVella.Database.Tests/WebVella.Database.Tests.csproj" />
 </Solution>

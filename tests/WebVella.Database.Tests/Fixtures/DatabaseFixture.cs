@@ -67,6 +67,12 @@ public class DatabaseFixture : IAsyncLifetime
 			DROP TABLE IF EXISTS test_order_items CASCADE;
 			DROP TABLE IF EXISTS "test_cacheable_products" CASCADE;
 			DROP TABLE IF EXISTS test_cacheable_products CASCADE;
+			DROP TABLE IF EXISTS "test_orders" CASCADE;
+			DROP TABLE IF EXISTS test_orders CASCADE;
+			DROP TABLE IF EXISTS "test_order_lines" CASCADE;
+			DROP TABLE IF EXISTS test_order_lines CASCADE;
+			DROP TABLE IF EXISTS "test_order_notes" CASCADE;
+			DROP TABLE IF EXISTS test_order_notes CASCADE;
 
 			CREATE TABLE test_products (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -102,6 +108,28 @@ public class DatabaseFixture : IAsyncLifetime
 				is_active BOOLEAN NOT NULL DEFAULT TRUE,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			);
+
+			CREATE TABLE test_orders (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				customer_name VARCHAR(255) NOT NULL,
+				total_amount DECIMAL(18, 2) NOT NULL DEFAULT 0,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+
+			CREATE TABLE test_order_lines (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				order_id UUID NOT NULL REFERENCES test_orders(id) ON DELETE CASCADE,
+				product_name VARCHAR(255) NOT NULL,
+				quantity INTEGER NOT NULL DEFAULT 1,
+				unit_price DECIMAL(18, 2) NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE test_order_notes (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				order_id UUID NOT NULL REFERENCES test_orders(id) ON DELETE CASCADE,
+				text TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
 			""";
 
 		await DbService.ExecuteAsync(createTableSql);
@@ -113,9 +141,12 @@ public class DatabaseFixture : IAsyncLifetime
 	private async Task DropTestTablesAsync()
 	{
 		const string dropTableSql = """
-			DROP TABLE IF EXISTS test_products;
-			DROP TABLE IF EXISTS test_order_items;
-			DROP TABLE IF EXISTS test_cacheable_products;
+			DROP TABLE IF EXISTS test_order_lines CASCADE;
+			DROP TABLE IF EXISTS test_order_notes CASCADE;
+			DROP TABLE IF EXISTS test_orders CASCADE;
+			DROP TABLE IF EXISTS test_products CASCADE;
+			DROP TABLE IF EXISTS test_order_items CASCADE;
+			DROP TABLE IF EXISTS test_cacheable_products CASCADE;
 			""";
 		await DbService.ExecuteAsync(dropTableSql);
 	}
@@ -145,6 +176,15 @@ public class DatabaseFixture : IAsyncLifetime
 	}
 
 	/// <summary>
+	/// Clears all data from the test_orders, test_order_lines, and test_order_notes tables.
+	/// </summary>
+	public async Task ClearTestOrdersAsync()
+	{
+		await DbService.ExecuteAsync(
+			"TRUNCATE TABLE test_order_lines, test_order_notes, test_orders CASCADE;");
+	}
+
+	/// <summary>
 	/// Clears all test data from all test tables.
 	/// </summary>
 	public async Task ClearAllTestDataAsync()
@@ -152,5 +192,6 @@ public class DatabaseFixture : IAsyncLifetime
 		await ClearTestProductsAsync();
 		await ClearTestOrderItemsAsync();
 		await ClearTestCacheableProductsAsync();
+		await ClearTestOrdersAsync();
 	}
 }
