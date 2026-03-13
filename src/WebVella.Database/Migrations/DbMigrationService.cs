@@ -191,7 +191,7 @@ public class DbMigrationService : IDbMigrationService
 			CREATE TABLE IF NOT EXISTS {_versionTableName} (
 				id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
 				version TEXT NOT NULL,
-				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+				updated_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			);");
 	}
 
@@ -248,9 +248,9 @@ public class DbMigrationService : IDbMigrationService
 		private async Task UpdateDbVersionAsync(Version version)
 		{
 			var sql = $@"
-				INSERT INTO {_versionTableName} (id, version, updated_at) 
+				INSERT INTO {_versionTableName} (id, version, updated_on) 
 				VALUES (1, @version, CURRENT_TIMESTAMP)
-				ON CONFLICT (id) DO UPDATE SET version = @version, updated_at = CURRENT_TIMESTAMP";
+				ON CONFLICT (id) DO UPDATE SET version = @version, updated_on = CURRENT_TIMESTAMP";
 			await _db.ExecuteAsync(sql, new { version = version.ToString() });
 		}
 
