@@ -569,6 +569,8 @@ public class DbService : IDbService
 {
 	private readonly string _connectionString;
 	private readonly IDbEntityCache _cache;
+	private readonly Security.RlsSessionInitializer? _rlsInitializer;
+	private readonly Security.IRlsContextProvider? _rlsContextProvider;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="DbService"/> class.
@@ -585,10 +587,38 @@ public class DbService : IDbService
 	/// <param name="connectionString">The PostgreSQL connection string.</param>
 	/// <param name="cache">The entity cache implementation.</param>
 	public DbService(string connectionString, IDbEntityCache cache)
+		: this(connectionString, cache, null, null)
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DbService"/> class with RLS support.
+	/// </summary>
+	/// <param name="connectionString">The PostgreSQL connection string.</param>
+	/// <param name="cache">The entity cache implementation.</param>
+	/// <param name="rlsContextProvider">
+	/// The RLS context provider for setting session variables. Pass <c>null</c> to disable RLS.
+	/// </param>
+	/// <param name="rlsOptions">The RLS options. If <c>null</c>, default options are used.</param>
+	public DbService(
+		string connectionString,
+		IDbEntityCache cache,
+		Security.IRlsContextProvider? rlsContextProvider,
+		Security.RlsOptions? rlsOptions)
 	{
 		_connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
 		_cache = cache ?? throw new ArgumentNullException(nameof(cache));
+		_rlsContextProvider = rlsContextProvider;
+
+		if (rlsContextProvider != null)
+		{
+			_rlsInitializer = new Security.RlsSessionInitializer(
+				rlsContextProvider,
+				rlsOptions ?? new Security.RlsOptions());
+		}
 	}
+
+	
 
 	#region <=== Query ===>
 
@@ -1557,7 +1587,7 @@ public class DbService : IDbService
 		// Try cache first
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateKey<T>(keys);
+			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			if (_cache.TryGet<T>(cacheKey, out var cached))
 			{
 				return cached;
@@ -1580,7 +1610,7 @@ public class DbService : IDbService
 		// Cache the result
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateKey<T>(keys);
+			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			_cache.Set(cacheKey, entity, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
 		}
 
@@ -1608,7 +1638,7 @@ public class DbService : IDbService
 		// Try cache first
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateKey<T>(keys);
+			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			if (_cache.TryGet<T>(cacheKey, out var cached))
 			{
 				return cached;
@@ -1631,7 +1661,7 @@ public class DbService : IDbService
 		// Cache the result
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateKey<T>(keys);
+			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			_cache.Set(cacheKey, entity, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
 		}
 
@@ -1666,7 +1696,7 @@ public class DbService : IDbService
 		// Try cache first
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateCollectionKey<T>();
+			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			if (_cache.TryGetCollection<T>(cacheKey, out var cached))
 			{
 				return cached!;
@@ -1682,7 +1712,7 @@ public class DbService : IDbService
 		// Cache the result
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateCollectionKey<T>();
+			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			_cache.SetCollection(cacheKey, entities, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
 		}
 
@@ -1697,7 +1727,7 @@ public class DbService : IDbService
 		// Try cache first
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateCollectionKey<T>();
+			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			if (_cache.TryGetCollection<T>(cacheKey, out var cached))
 			{
 				return cached!;
@@ -1713,7 +1743,7 @@ public class DbService : IDbService
 		// Cache the result
 		if (metadata.IsCacheable)
 		{
-			var cacheKey = _cache.GenerateCollectionKey<T>();
+			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			_cache.SetCollection(cacheKey, entities, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
 		}
 
@@ -1934,11 +1964,18 @@ public class DbService : IDbService
 			currentCtx = DbConnectionContext.CreateContext(_connectionString);
 		}
 
-		return currentCtx.CreateConnection();
+		var connection = currentCtx.CreateConnection();
+
+		if (_rlsInitializer != null && _rlsInitializer.HasContext)
+		{
+			_rlsInitializer.InitializeSession(connection.GetUnderlyingConnection());
+		}
+
+		return connection;
 	}
 
 	/// <inheritdoc/>
-	public Task<IDbConnection> CreateConnectionAsync()
+	public async Task<IDbConnection> CreateConnectionAsync()
 	{
 		var currentCtx = DbConnectionContext.GetCurrentContext();
 
@@ -1947,7 +1984,14 @@ public class DbService : IDbService
 			currentCtx = DbConnectionContext.CreateContext(_connectionString);
 		}
 
-		return CreateConnectionInternalAsync(currentCtx);
+		var connection = await currentCtx.CreateConnectionAsync();
+
+		if (_rlsInitializer != null && _rlsInitializer.HasContext)
+		{
+			await _rlsInitializer.InitializeSessionAsync(connection.GetUnderlyingConnection());
+		}
+
+		return connection;
 	}
 
 	/// <inheritdoc/>
@@ -2018,6 +2062,34 @@ public class DbService : IDbService
 
 	#region <=== Private Helpers ===>
 
+	/// <summary>
+	/// Gets the current RLS context string for cache key generation.
+	/// Returns null if no RLS context is configured.
+	/// </summary>
+	private string? GetRlsCacheContext()
+	{
+		if (_rlsContextProvider == null)
+			return null;
+
+		var parts = new List<string>();
+
+		if (_rlsContextProvider.TenantId.HasValue)
+			parts.Add($"t:{_rlsContextProvider.TenantId}");
+
+		if (_rlsContextProvider.UserId.HasValue)
+			parts.Add($"u:{_rlsContextProvider.UserId}");
+
+		if (_rlsContextProvider.CustomClaims.Count > 0)
+		{
+			var sortedClaims = _rlsContextProvider.CustomClaims
+				.OrderBy(c => c.Key)
+				.Select(c => $"{c.Key}:{c.Value}");
+			parts.Add($"c:{string.Join(",", sortedClaims)}");
+		}
+
+		return parts.Count > 0 ? string.Join("|", parts) : null;
+	}
+
 	private static long GenerateLongHashFromString(string? key)
 	{
 		if (string.IsNullOrEmpty(key))
@@ -2027,11 +2099,6 @@ public class DbService : IDbService
 		byte[] hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
 
 		return BitConverter.ToInt64(hashBytes, 0);
-	}
-
-	private static async Task<IDbConnection> CreateConnectionInternalAsync(DbConnectionContext connectionCtx)
-	{
-		return await connectionCtx.CreateConnectionAsync();
 	}
 
 	private static async Task<IDbTransactionScope> CreateTransactionScopeInternalAsync(

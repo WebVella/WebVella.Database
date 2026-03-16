@@ -63,24 +63,27 @@ public interface IDbEntityCache
 	/// </summary>
 	/// <typeparam name="T">The entity type.</typeparam>
 	/// <param name="id">The entity ID.</param>
+	/// <param name="rlsContext">Optional RLS context to include in the cache key.</param>
 	/// <returns>The cache key.</returns>
-	string GenerateKey<T>(Guid id) where T : class;
+	string GenerateKey<T>(Guid id, string? rlsContext = null) where T : class;
 
 	/// <summary>
 	/// Generates a cache key for a single entity by composite keys.
 	/// </summary>
 	/// <typeparam name="T">The entity type.</typeparam>
 	/// <param name="keys">The composite keys.</param>
+	/// <param name="rlsContext">Optional RLS context to include in the cache key.</param>
 	/// <returns>The cache key.</returns>
-	string GenerateKey<T>(Dictionary<string, Guid> keys) where T : class;
+	string GenerateKey<T>(Dictionary<string, Guid> keys, string? rlsContext = null) where T : class;
 
 	/// <summary>
 	/// Generates a cache key for a collection query.
 	/// </summary>
 	/// <typeparam name="T">The entity type.</typeparam>
 	/// <param name="suffix">Optional suffix for the key.</param>
+	/// <param name="rlsContext">Optional RLS context to include in the cache key.</param>
 	/// <returns>The cache key.</returns>
-	string GenerateCollectionKey<T>(string? suffix = null) where T : class;
+	string GenerateCollectionKey<T>(string? suffix = null, string? rlsContext = null) where T : class;
 }
 
 /// <summary>
@@ -157,24 +160,27 @@ public class DbEntityCache : IDbEntityCache
 	}
 
 	/// <inheritdoc/>
-	public string GenerateKey<T>(Guid id) where T : class
+	public string GenerateKey<T>(Guid id, string? rlsContext = null) where T : class
 	{
-		return $"Entity:{typeof(T).FullName}:Id:{id}";
+		var baseKey = $"Entity:{typeof(T).FullName}:Id:{id}";
+		return string.IsNullOrEmpty(rlsContext) ? baseKey : $"{baseKey}:Rls:{rlsContext}";
 	}
 
 	/// <inheritdoc/>
-	public string GenerateKey<T>(Dictionary<string, Guid> keys) where T : class
+	public string GenerateKey<T>(Dictionary<string, Guid> keys, string? rlsContext = null) where T : class
 	{
 		var sortedKeys = keys.OrderBy(k => k.Key).Select(k => $"{k.Key}={k.Value}");
-		return $"Entity:{typeof(T).FullName}:Keys:{string.Join("&", sortedKeys)}";
+		var baseKey = $"Entity:{typeof(T).FullName}:Keys:{string.Join("&", sortedKeys)}";
+		return string.IsNullOrEmpty(rlsContext) ? baseKey : $"{baseKey}:Rls:{rlsContext}";
 	}
 
 	/// <inheritdoc/>
-	public string GenerateCollectionKey<T>(string? suffix = null) where T : class
+	public string GenerateCollectionKey<T>(string? suffix = null, string? rlsContext = null) where T : class
 	{
-		return suffix == null
+		var baseKey = suffix == null
 			? $"Collection:{typeof(T).FullName}:All"
 			: $"Collection:{typeof(T).FullName}:{suffix}";
+		return string.IsNullOrEmpty(rlsContext) ? baseKey : $"{baseKey}:Rls:{rlsContext}";
 	}
 
 	private static MemoryCacheEntryOptions CreateCacheOptions(int durationSeconds, bool slidingExpiration)
@@ -243,11 +249,13 @@ public class NullDbEntityCache : IDbEntityCache
 	public void Invalidate(Type entityType) { }
 
 	/// <inheritdoc/>
-	public string GenerateKey<T>(Guid id) where T : class => string.Empty;
+	public string GenerateKey<T>(Guid id, string? rlsContext = null) where T : class => string.Empty;
 
 	/// <inheritdoc/>
-	public string GenerateKey<T>(Dictionary<string, Guid> keys) where T : class => string.Empty;
+	public string GenerateKey<T>(Dictionary<string, Guid> keys, string? rlsContext = null)
+		where T : class => string.Empty;
 
 	/// <inheritdoc/>
-	public string GenerateCollectionKey<T>(string? suffix = null) where T : class => string.Empty;
+	public string GenerateCollectionKey<T>(string? suffix = null, string? rlsContext = null)
+		where T : class => string.Empty;
 }

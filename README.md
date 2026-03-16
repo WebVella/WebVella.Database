@@ -26,7 +26,8 @@ GitHub stars guide developers toward great tools. If you find this project valua
 - **Dapper-based CRUD operations** - Simple Insert, Update, Delete, Get, and Query methods
 - **Nested transaction support** - Create transaction scopes that properly handle nesting
 - **PostgreSQL advisory locks** - Easy-to-use advisory lock scopes for distributed locking
-- **Entity caching** - Optional in-memory caching with automatic invalidation
+- **Row Level Security (RLS)** - Built-in support for PostgreSQL RLS with automatic session context
+- **Entity caching** - Optional in-memory caching with automatic invalidation (RLS-aware)
 - **JSON column support** - Automatic serialization/deserialization of JSON columns
 - **Attribute-based mapping** - Use attributes like `[Table]`, `[Key]`, `[JsonColumn]`, and more
 - **Database migrations** - Version-controlled schema migrations with rollback support
@@ -57,6 +58,51 @@ builder.Services.AddWebVellaDatabase(
 ```csharp
 builder.Services.AddWebVellaDatabase(
     sp => sp.GetRequiredService<IConfiguration>().GetConnectionString("DefaultConnection")!);
+```
+
+### With Row Level Security (RLS)
+
+For multi-tenant applications, enable RLS to automatically set PostgreSQL session variables:
+
+```csharp
+// Implement IRlsContextProvider to provide tenant/user context
+public class HttpRlsContextProvider : IRlsContextProvider
+{
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public HttpRlsContextProvider(IHttpContextAccessor httpContextAccessor)
+    {
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    public Guid? TenantId => GetClaimAsGuid("tenant_id");
+    public Guid? UserId => GetClaimAsGuid("sub");
+    public IReadOnlyDictionary<string, string> CustomClaims => new Dictionary<string, string>
+    {
+        ["role"] = GetClaim("role") ?? "user"
+    };
+
+    private Guid? GetClaimAsGuid(string type) =>
+        Guid.TryParse(_httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value, out var g) ? g : null;
+    private string? GetClaim(string type) =>
+        _httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value;
+}
+
+// Register with RLS support
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionString);
+
+// Or with caching and custom options
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
+    connectionString,
+    enableCaching: true,
+    rlsOptions: new RlsOptions { Prefix = "app" });
+```
+
+Each connection automatically sets session variables that PostgreSQL RLS policies can use:
+```sql
+-- Create RLS policy using the session variable
+CREATE POLICY tenant_isolation ON orders
+    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
 ```
 
 ## Usage Examples
@@ -224,7 +270,7 @@ await lockScope.CompleteAsync();
 
 ## Database Migrations
 
-WebVella.Database provides a simple yet powerful migration system for managing database schema changes.
+WebVella.Database provides a simple yet powerful migration system for managing database schema changes. Migrations automatically bypass RLS to ensure unrestricted schema access.
 
 ### Migration Setup
 

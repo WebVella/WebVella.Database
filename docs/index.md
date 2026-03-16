@@ -16,8 +16,9 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
 10. [Transaction Management](#transaction-management)
 11. [Advisory Locks](#advisory-locks)
 12. [Caching](#caching)
-13. [Database Migrations](#database-migrations)
-14. [Best Practices](#best-practices)
+13. [Row Level Security](#row-level-security)
+14. [Database Migrations](#database-migrations)
+15. [Best Practices](#best-practices)
 
 ---
 
@@ -1321,6 +1322,256 @@ builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
 
 ---
 
+## Row Level Security
+
+WebVella.Database provides built-in support for PostgreSQL Row Level Security (RLS) through automatic session variable injection. This allows you to implement multi-tenant data isolation and user-based access control at the database level.
+
+### Key Features
+
+- **Automatic session context** - Security context is automatically set on each connection
+- **PostgreSQL native RLS** - Leverages PostgreSQL's built-in row-level security policies
+- **Flexible context provider** - Implement your own context provider to integrate with any authentication system
+- **Custom claims support** - Pass additional claims beyond tenant and user IDs
+- **Transaction-aware** - Session variables respect transaction boundaries
+
+### How It Works
+
+1. Implement `IRlsContextProvider` to provide security context (tenant ID, user ID, custom claims)
+2. Register the provider with `AddWebVellaDatabaseWithRls<T>()`
+3. Each database connection automatically sets PostgreSQL session variables
+4. PostgreSQL RLS policies use `current_setting('app.variable_name')` to filter data
+
+### Implementing an RLS Context Provider
+
+```csharp
+using WebVella.Database.Security;
+
+public class HttpRlsContextProvider : IRlsContextProvider
+{
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public HttpRlsContextProvider(IHttpContextAccessor httpContextAccessor)
+    {
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    public Guid? TenantId => GetClaimAsGuid("tenant_id");
+
+    public Guid? UserId => GetClaimAsGuid("sub");
+
+    public IReadOnlyDictionary<string, string> CustomClaims => new Dictionary<string, string>
+    {
+        ["role"] = GetClaim("role") ?? "user",
+        ["department"] = GetClaim("department") ?? string.Empty
+    };
+
+    private Guid? GetClaimAsGuid(string claimType)
+    {
+        var value = GetClaim(claimType);
+        return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private string? GetClaim(string claimType) =>
+        _httpContextAccessor.HttpContext?.User?.FindFirst(claimType)?.Value;
+}
+```
+
+### Service Registration
+
+```csharp
+// Basic RLS registration
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionString);
+
+// With caching enabled
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
+    connectionString,
+    enableCaching: true);
+
+// With custom RLS options
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
+    connectionString,
+    enableCaching: false,
+    rlsOptions: new RlsOptions
+    {
+        Prefix = "myapp",        // Default: "app"
+        UseLocalSettings = true, // Default: true (transaction-scoped)
+        Enabled = true           // Default: true
+    });
+
+// With factory pattern
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
+    sp => sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")!,
+    enableCaching: true);
+
+// With custom provider factory
+builder.Services.AddWebVellaDatabaseWithRls(
+    connectionString,
+    rlsContextProviderFactory: sp => new CustomRlsProvider(sp),
+    enableCaching: true);
+```
+
+### PostgreSQL RLS Policy Setup
+
+Create RLS policies in your database that reference the session variables:
+
+```sql
+-- Enable RLS on table
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+-- Force RLS for table owner (optional but recommended)
+ALTER TABLE orders FORCE ROW LEVEL SECURITY;
+
+-- Create policy for tenant isolation
+CREATE POLICY tenant_isolation ON orders
+    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+-- Create policy for user-specific data
+CREATE POLICY user_orders ON orders
+    FOR SELECT
+    USING (user_id = current_setting('app.user_id', true)::uuid);
+
+-- Create policy using custom claims
+CREATE POLICY admin_access ON orders
+    FOR ALL
+    USING (current_setting('app.role', true) = 'admin');
+
+-- Combined policy example
+CREATE POLICY order_access ON orders
+    USING (
+        tenant_id = current_setting('app.tenant_id', true)::uuid
+        AND (
+            user_id = current_setting('app.user_id', true)::uuid
+            OR current_setting('app.role', true) = 'admin'
+        )
+    );
+```
+
+### RLS Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `Prefix` | `"app"` | Prefix for all session variables (e.g., `app.tenant_id`) |
+| `UseLocalSettings` | `true` | When `true`, variables are transaction-scoped; when `false`, session-scoped |
+| `Enabled` | `true` | Set to `false` to bypass RLS (useful for admin/migration scenarios) |
+
+### Session Variables Reference
+
+When `RlsOptions.Prefix = "app"` (default):
+
+| Context Property | PostgreSQL Variable | Access in Policy |
+|------------------|---------------------|------------------|
+| `TenantId` | `app.tenant_id` | `current_setting('app.tenant_id', true)::uuid` |
+| `UserId` | `app.user_id` | `current_setting('app.user_id', true)::uuid` |
+| Custom claim "role" | `app.role` | `current_setting('app.role', true)` |
+
+### Bypassing RLS for Admin Operations
+
+```csharp
+// Option 1: Use NullRlsContextProvider
+var adminDbService = new DbService(
+    connectionString,
+    NullDbEntityCache.Instance,
+    NullRlsContextProvider.Instance,  // No RLS context
+    null);
+
+// Option 2: Disable in options
+var options = new RlsOptions { Enabled = false };
+
+// Option 3: Create a separate service for admin operations
+builder.Services.AddKeyedScoped<IDbService>("admin", (sp, key) =>
+{
+    var cache = sp.GetRequiredService<IDbEntityCache>();
+    return new DbService(connectionString, cache, null, null);
+});
+```
+
+### Database Migration for RLS
+
+Create a migration to set up RLS policies:
+
+```csharp
+[DbMigration("1.1.0.0")]
+public class EnableRowLevelSecurity : DbMigration
+{
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            -- Add tenant_id column if not exists
+            ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID;
+
+            -- Enable RLS
+            ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE orders FORCE ROW LEVEL SECURITY;
+
+            -- Create tenant isolation policy
+            DROP POLICY IF EXISTS tenant_isolation ON orders;
+            CREATE POLICY tenant_isolation ON orders
+                USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+            -- Create index for performance
+            CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+            """);
+    }
+}
+```
+
+### Best Practices for RLS
+
+1. **Always use `current_setting(name, true)`** - The second parameter returns NULL instead of throwing an error when the variable is not set
+
+2. **Create indexes on RLS columns** - Policies add filter conditions to every query; indexes are essential for performance
+
+3. **Test with different contexts** - Verify that policies correctly filter data for different tenants/users
+
+4. **Use FORCE ROW LEVEL SECURITY** - Ensures RLS applies even to table owners
+
+5. **Consider policy performance** - Complex policies can impact query performance; keep them simple
+
+6. **Handle missing context gracefully** - Design policies to handle NULL values appropriately:
+   ```sql
+   -- Returns no rows if tenant_id is not set
+   USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+   -- Returns all rows if tenant_id is not set (dangerous!)
+   USING (tenant_id = COALESCE(current_setting('app.tenant_id', true)::uuid, tenant_id));
+   ```
+
+### RLS-Aware Caching
+
+When using both RLS and entity caching (`[Cacheable]`), the cache automatically includes the RLS context in cache keys. This ensures **complete data isolation between tenants/users**:
+
+```
+// Without RLS context:
+Entity:MyApp.Product:Id:abc123
+
+// With tenant context:
+Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid
+
+// With tenant and user context:
+Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid|u:user-guid
+
+// With custom claims (e.g., role-based access):
+Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid|c:department:sales,role:manager
+```
+
+**How it works:**
+- Cache keys automatically include tenant ID, user ID, and custom claims from `IRlsContextProvider`
+- Different tenants/users/roles get separate cache entries for the same entity
+- Custom claims are sorted alphabetically for consistent key generation
+- Cache invalidation still works per-entity-type (invalidates all context variants)
+
+**Important considerations:**
+
+1. **Memory usage** - Each unique RLS context combination creates separate cache entries. For high-cardinality scenarios (many custom claims), consider shorter cache durations or disabling caching
+
+2. **Global data** - For entities shared across all tenants (e.g., countries, currencies), consider:
+   - Not using RLS for these tables
+   - Using a separate `DbService` instance without RLS for global data queries
+
+3. **Cache invalidation** - When an entity is modified, all cached versions (across all contexts) are invalidated to ensure consistency
+
+---
+
 ## Database Migrations
 
 WebVella.Database provides a simple yet powerful migration system for managing database schema changes. Migrations are version-controlled, executed in order, and support rollback on failure.
@@ -1333,6 +1584,7 @@ WebVella.Database provides a simple yet powerful migration system for managing d
 - **Detailed logging** - Each SQL statement is logged with success/failure status
 - **Post-migration hooks** - Execute custom .NET code after SQL migration
 - **Embedded SQL support** - Load SQL from embedded resource files
+- **RLS bypass** - Migrations automatically run without RLS context for unrestricted schema access
 
 ### Migration Service Registration
 
@@ -1355,6 +1607,10 @@ builder.Services.AddWebVellaDatabaseMigrations(new DbMigrationOptions
     VersionTableName = "_custom_version"
 });
 ```
+
+> **Note:** When using RLS (`AddWebVellaDatabaseWithRls`), the migration service automatically creates
+> a separate database connection without RLS context. This ensures migrations can modify schema and
+> seed data without being affected by tenant or user isolation policies.
 
 ### Creating Migrations
 
@@ -1786,9 +2042,27 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `DbMigrationException` | Exception thrown when a migration fails |
 | `DbMigrationLogItem` | Log entry for a single SQL statement execution |
 
+### Row Level Security Classes
+
+| Class/Interface | Description |
+|-----------------|-------------|
+| `IRlsContextProvider` | Interface for providing tenant ID, user ID, and custom claims |
+| `RlsOptions` | Configuration options for RLS session context initialization |
+| `NullRlsContextProvider` | Null implementation that provides no security context |
+
 ---
 
 ## Version History
+
+### v1.2.0
+- Added Row Level Security (RLS) support with automatic session variable injection
+- Added `IRlsContextProvider` interface for implementing custom security context providers
+- Added `RlsOptions` for configuring RLS behavior (prefix, local settings, enable/disable)
+- Added `NullRlsContextProvider` for scenarios where RLS should be bypassed
+- Added `AddWebVellaDatabaseWithRls<T>()` extension methods for easy DI registration
+- Session variables are automatically set on each connection for use in PostgreSQL RLS policies
+- RLS-aware caching: cache keys include tenant ID, user ID, and custom claims for data isolation
+- Migrations automatically bypass RLS for unrestricted schema and data access
 
 ### v1.1.0
 - Added `ExecuteScalar<T>` and `ExecuteScalarAsync<T>` methods for single value queries
