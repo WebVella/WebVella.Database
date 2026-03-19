@@ -1,0 +1,29 @@
+﻿<!-- WebVella.Database.targets - MSBuild integration for consuming projects -->
+<Project>
+  
+  <!-- Make documentation available in consuming projects -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../docs/**/*.md" Visible="false" />
+    
+    <!-- Add docs as analyzer additional files so tools like Copilot can read them -->
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)../docs/**/*.md" />
+  </ItemGroup>
+
+  <!-- Show helpful welcome message on first build -->
+  <Target Name="WebVellaDatabaseWelcome" BeforeTargets="CoreCompile" Condition="'$(WebVellaDatabaseWelcomeShown)' == ''">
+    <Message Text="📖 WebVella.Database: High-performance PostgreSQL library with nested transactions, advisory locks, and RLS support" Importance="normal" />
+    <Message Text="📚 Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md" Importance="normal" />
+    <Message Text="🚀 Quick Start: builder.Services.AddWebVellaDatabase(connectionString);" Importance="normal" />
+    
+    <!-- Set property to prevent showing message again in the same build session -->
+    <PropertyGroup>
+      <WebVellaDatabaseWelcomeShown>true</WebVellaDatabaseWelcomeShown>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Add IntelliSense support for common scenarios -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)../lib/netstandard2.0/WebVella.Database.xml" Condition="Exists('$(MSBuildThisFileDirectory)../lib/netstandard2.0/WebVella.Database.xml')" Visible="false" />
+  </ItemGroup>
+
+</Project>

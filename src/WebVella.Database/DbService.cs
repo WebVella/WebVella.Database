@@ -1,9 +1,58 @@
 namespace WebVella.Database;
 
-
 /// <summary>
-/// Defines a database service interface for entity CRUD operations using Dapper.
+/// A lightweight, high-performance PostgreSQL data access library built on Dapper.
+/// Provides entity CRUD operations, nested transactions, advisory locks, and Row Level Security (RLS).
 /// </summary>
+/// <remarks>
+/// <para>WebVella.Database simplifies PostgreSQL data access with the following key features:</para>
+/// <list type="bullet">
+/// <item>🔄 <strong>Nested Transactions</strong>: Proper savepoint handling for complex workflows</item>
+/// <item>🔒 <strong>Advisory Locks</strong>: Distributed coordination with simple scope management</item>
+/// <item>🛡️ <strong>Row Level Security (RLS)</strong>: Automatic session context for multi-tenant applications</item>
+/// <item>📦 <strong>Entity Caching</strong>: Optional caching with automatic invalidation (RLS-aware)</item>
+/// <item>🚀 <strong>Database Migrations</strong>: Version-controlled schema changes</item>
+/// <item>🎯 <strong>JSON Columns</strong>: Automatic serialization/deserialization</item>
+/// </list>
+/// 
+/// <para><strong>Quick Start:</strong></para>
+/// <code>
+/// // Registration
+/// builder.Services.AddWebVellaDatabase(connectionString);
+/// 
+/// // Basic CRUD
+/// var user = await dbService.GetAsync&lt;User&gt;(userId);
+/// var newUser = await dbService.InsertAsync(new User { Name = "John" });
+/// await dbService.UpdateAsync(user);
+/// await dbService.DeleteAsync&lt;User&gt;(userId);
+/// 
+/// // Transactions with automatic nesting
+/// await using var scope = await dbService.CreateTransactionScopeAsync();
+/// await dbService.InsertAsync(user);
+/// await dbService.InsertAsync(order);
+/// await scope.CompleteAsync();
+/// </code>
+/// 
+/// <para>For complete documentation and examples, visit: https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md</para>
+/// </remarks>
+/// <example>
+/// <para>Complete service example:</para>
+/// <code>
+/// public class UserService
+/// {
+///     private readonly IDbService _db;
+///     
+///     public UserService(IDbService db) => _db = db;
+///     
+///     public async Task&lt;User&gt; CreateUserAsync(User user) => await _db.InsertAsync(user);
+///     public async Task&lt;User?&gt; GetUserAsync(Guid id) => await _db.GetAsync&lt;User&gt;(id);
+///     public async Task&lt;IEnumerable&lt;User&gt;&gt; GetActiveUsersAsync() => 
+///         await _db.QueryAsync&lt;User&gt;("SELECT * FROM users WHERE is_active = true");
+///     public async Task&lt;bool&gt; UpdateUserAsync(User user) => await _db.UpdateAsync(user);
+///     public async Task&lt;bool&gt; DeleteUserAsync(Guid id) => await _db.DeleteAsync&lt;User&gt;(id);
+/// }
+/// </code>
+/// </example>
 public interface IDbService
 {
 	#region <=== Query ===>

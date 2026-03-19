@@ -2054,6 +2054,15 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 
 ## Version History
 
+### v1.2.1
+- **Enhanced Developer Experience**: Comprehensive documentation integration with IntelliSense-friendly examples
+- **MSBuild Integration**: Added `.targets` file that automatically makes documentation available to consuming projects
+- **AI/Copilot Integration**: Source Link support and AdditionalFiles integration for better AI tool support
+- **Package Enhancements**: Improved package metadata, tags, and symbol packages for enhanced debugging
+- **Documentation Updates**: Added quick reference guide and enhanced XML documentation with practical examples
+- **Welcome Messages**: Helpful build-time guidance with quick-start examples for new users
+- **Technical Improvements**: XML documentation generation and timezone test fixes
+
 ### v1.2.0
 - Added Row Level Security (RLS) support with automatic session variable injection
 - Added `IRlsContextProvider` interface for implementing custom security context providers

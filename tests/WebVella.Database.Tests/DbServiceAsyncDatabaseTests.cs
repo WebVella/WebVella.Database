@@ -26,6 +26,7 @@ public class DbServiceAsyncDatabaseTests : IAsyncLifetime
 	[Fact]
 	public async Task AsyncConnection_CRUDOperations_ShouldSucceed()
 	{
+		var createdAt = DateTime.UtcNow;
 		var product = new TestProduct
 		{
 			Name = "AsyncName",
@@ -33,26 +34,48 @@ public class DbServiceAsyncDatabaseTests : IAsyncLifetime
 			Price = 10.00m,
 			Quantity = 5,
 			IsActive = true,
-			CreatedAt = DateTime.UtcNow
+			CreatedAt = createdAt
 		};
 
+		// Insert and verify all properties
 		var inserted = await _dbService.InsertAsync(product);
 		var id = inserted.Id;
 
 		id.Should().NotBe(Guid.Empty);
+		inserted.Name.Should().Be("AsyncName");
+		inserted.Description.Should().Be("Async test product");
+		inserted.Price.Should().Be(10.00m);
+		inserted.Quantity.Should().Be(5);
+		inserted.IsActive.Should().BeTrue();
+		inserted.CreatedAt.ToUniversalTime().Should().BeCloseTo(createdAt.ToUniversalTime(), TimeSpan.FromSeconds(1));
 
+		// Retrieve and verify all properties
 		var retrieved = await _dbService.GetAsync<TestProduct>(id);
 		retrieved.Should().NotBeNull();
-		retrieved!.Name.Should().Be("AsyncName");
+		retrieved!.Id.Should().Be(id);
+		retrieved.Name.Should().Be("AsyncName");
+		retrieved.Description.Should().Be("Async test product");
+		retrieved.Price.Should().Be(10.00m);
+		retrieved.Quantity.Should().Be(5);
+		retrieved.IsActive.Should().BeTrue();
+		retrieved.CreatedAt.ToUniversalTime().Should().BeCloseTo(createdAt.ToUniversalTime(), TimeSpan.FromSeconds(1));
 
+		// Update name only and verify other properties remain unchanged
 		retrieved.Name = "AsyncUpdated";
 		var updateResult = await _dbService.UpdateAsync(retrieved);
 		updateResult.Should().BeTrue();
 
 		var updated = await _dbService.GetAsync<TestProduct>(id);
 		updated.Should().NotBeNull();
-		updated!.Name.Should().Be("AsyncUpdated");
+		updated!.Id.Should().Be(id);
+		updated.Name.Should().Be("AsyncUpdated");
+		updated.Description.Should().Be("Async test product"); // Should remain unchanged
+		updated.Price.Should().Be(10.00m); // Should remain unchanged
+		updated.Quantity.Should().Be(5); // Should remain unchanged
+		updated.IsActive.Should().BeTrue(); // Should remain unchanged
+		updated.CreatedAt.ToUniversalTime().Should().BeCloseTo(createdAt.ToUniversalTime(), TimeSpan.FromSeconds(1)); // Should remain unchanged
 
+		// Delete and verify removal
 		var deleteResult = await _dbService.DeleteAsync<TestProduct>(id);
 		deleteResult.Should().BeTrue();
 
