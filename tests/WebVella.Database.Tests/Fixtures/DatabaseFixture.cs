@@ -72,9 +72,18 @@ public class DatabaseFixture : IAsyncLifetime
 			DROP TABLE IF EXISTS "test_order_lines" CASCADE;
 			DROP TABLE IF EXISTS test_order_lines CASCADE;
 			DROP TABLE IF EXISTS "test_order_notes" CASCADE;
-			DROP TABLE IF EXISTS test_order_notes CASCADE;
+				DROP TABLE IF EXISTS test_order_notes CASCADE;
+				DROP TABLE IF EXISTS "test_db_column_entities" CASCADE;
+				DROP TABLE IF EXISTS test_db_column_entities CASCADE;
 
-			CREATE TABLE test_products (
+				CREATE TABLE test_db_column_entities (
+					entity_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+					full_name VARCHAR(255) NOT NULL,
+					email_address VARCHAR(255) NOT NULL,
+					description TEXT NOT NULL DEFAULT ''
+				);
+
+				CREATE TABLE test_products (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				name VARCHAR(255) NOT NULL,
 				description TEXT,
@@ -147,6 +156,7 @@ public class DatabaseFixture : IAsyncLifetime
 			DROP TABLE IF EXISTS test_products CASCADE;
 			DROP TABLE IF EXISTS test_order_items CASCADE;
 			DROP TABLE IF EXISTS test_cacheable_products CASCADE;
+			DROP TABLE IF EXISTS test_db_column_entities CASCADE;
 			""";
 		await DbService.ExecuteAsync(dropTableSql);
 	}
@@ -185,6 +195,14 @@ public class DatabaseFixture : IAsyncLifetime
 	}
 
 	/// <summary>
+	/// Clears all data from the test_db_column_entities table.
+	/// </summary>
+	public async Task ClearTestDbColumnEntitiesAsync()
+	{
+		await DbService.ExecuteAsync("TRUNCATE TABLE test_db_column_entities;");
+	}
+
+	/// <summary>
 	/// Clears all test data from all test tables.
 	/// </summary>
 	public async Task ClearAllTestDataAsync()
@@ -193,5 +211,6 @@ public class DatabaseFixture : IAsyncLifetime
 		await ClearTestOrderItemsAsync();
 		await ClearTestCacheableProductsAsync();
 		await ClearTestOrdersAsync();
+		await ClearTestDbColumnEntitiesAsync();
 	}
 }

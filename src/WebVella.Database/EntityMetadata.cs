@@ -130,29 +130,29 @@ internal sealed class EntityMetadata
 		InsertProperties = keyProperties.Concat(writableProperties).ToList();
 		HasSingleKey = keyProperties.Count == 1;
 		FirstKeyPropertyName = keyProperties[0].Name;
-		FirstKeyColumnName = ToSnakeCase(FirstKeyPropertyName);
+		FirstKeyColumnName = GetColumnName(keyProperties[0]);
 
 		WritablePropertiesByName = writableProperties
 			.ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
 
 		KeyPropertyColumnNames = keyProperties
-			.ToDictionary(p => p.Name, p => ToSnakeCase(p.Name));
+			.ToDictionary(p => p.Name, p => GetColumnName(p));
 
 		SelectColumns = string.Join(
 			", ",
-			allProperties.Select(p => $"{ToSnakeCase(p.Name)} AS \"{p.Name}\""));
+			allProperties.Select(p => $"{GetColumnName(p)} AS \"{p.Name}\""));
 
-		InsertColumns = string.Join(", ", InsertProperties.Select(p => ToSnakeCase(p.Name)));
+		InsertColumns = string.Join(", ", InsertProperties.Select(p => GetColumnName(p)));
 		InsertParameters = string.Join(", ", InsertProperties.Select(p => "@" + p.Name));
-		ReturningColumns = string.Join(", ", keyProperties.Select(p => ToSnakeCase(p.Name)));
+		ReturningColumns = string.Join(", ", keyProperties.Select(p => GetColumnName(p)));
 
 		KeyWhereClause = string.Join(
 			" AND ",
-			keyProperties.Select(p => $"{ToSnakeCase(p.Name)} = @{p.Name}"));
+			keyProperties.Select(p => $"{GetColumnName(p)} = @{p.Name}"));
 
 		UpdateSetClause = string.Join(
 			", ",
-			writableProperties.Select(p => $"{ToSnakeCase(p.Name)} = @{p.Name}"));
+			writableProperties.Select(p => $"{GetColumnName(p)} = @{p.Name}"));
 	}
 
 	/// <summary>
@@ -167,7 +167,13 @@ internal sealed class EntityMetadata
 	/// </summary>
 	public string BuildUpdateSetClause(IEnumerable<PropertyInfo> properties)
 	{
-		return string.Join(", ", properties.Select(p => $"{ToSnakeCase(p.Name)} = @{p.Name}"));
+		return string.Join(", ", properties.Select(p => $"{GetColumnName(p)} = @{p.Name}"));
+	}
+
+	private static string GetColumnName(PropertyInfo property)
+	{
+		var dbColumnAttr = property.GetCustomAttribute<DbColumnAttribute>();
+		return dbColumnAttr?.Name ?? ToSnakeCase(property.Name);
 	}
 
 	private static string ToSnakeCase(string input)

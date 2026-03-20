@@ -134,3 +134,26 @@ public class WriteAttribute : Attribute
 public class JsonColumnAttribute : Attribute
 {
 }
+
+/// <summary>
+/// Specifies an explicit database column name for a property.
+/// When applied, the specified name is used instead of the
+/// auto-generated snake_case conversion.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+public class DbColumnAttribute : Attribute
+{
+	/// <summary>
+	/// Gets the database column name.
+	/// </summary>
+	public string Name { get; }
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DbColumnAttribute"/> class.
+	/// </summary>
+	/// <param name="name">The database column name.</param>
+	public DbColumnAttribute(string name)
+	{
+		Name = name;
+	}
+}
