@@ -12,7 +12,7 @@
   <!-- Show helpful welcome message on first build -->
   <Target Name="WebVellaDatabaseWelcome" BeforeTargets="CoreCompile" Condition="'$(WebVellaDatabaseWelcomeShown)' == ''">
     <Message Text="📖 WebVella.Database: High-performance PostgreSQL library with nested transactions, advisory locks, and RLS support" Importance="normal" />
-    <Message Text="📚 Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md" Importance="normal" />
+    <Message Text="📚 Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md" Importance="normal" />
     <Message Text="🚀 Quick Start: builder.Services.AddWebVellaDatabase(connectionString);" Importance="normal" />
     
     <!-- Set property to prevent showing message again in the same build session -->

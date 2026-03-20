@@ -33,7 +33,7 @@ namespace WebVella.Database;
 /// await scope.CompleteAsync();
 /// </code>
 /// 
-/// <para>For complete documentation and examples, visit: https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md</para>
+/// <para>For complete documentation and examples, visit: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md</para>
 /// </remarks>
 /// <example>
 /// <para>Complete service example:</para>
@@ -333,6 +333,34 @@ public interface IDbService
 		/// <returns>The inserted entity with generated key values populated.</returns>
 		Task<T> InsertAsync<T>(T entity) where T : class;
 
+		/// <summary>
+		/// Inserts a new entity by mapping properties from an anonymous object or any object instance
+		/// to the entity type <typeparamref name="T"/>. Only properties with matching names are mapped.
+		/// Property types must match exactly. Throws if the object contains properties not found on
+		/// the entity type.
+		/// </summary>
+		/// <typeparam name="T">The entity type.</typeparam>
+		/// <param name="obj">
+		/// An anonymous object, class, or record whose properties will be mapped to the entity.
+		/// All properties must exist on the entity type.
+		/// </param>
+		/// <returns>The inserted entity with generated key values populated.</returns>
+		T Insert<T>(object obj) where T : class, new();
+
+		/// <summary>
+		/// Asynchronously inserts a new entity by mapping properties from an anonymous object or any
+		/// object instance to the entity type <typeparamref name="T"/>. Only properties with matching
+		/// names are mapped. Property types must match exactly. Throws if the object contains
+		/// properties not found on the entity type.
+		/// </summary>
+		/// <typeparam name="T">The entity type.</typeparam>
+		/// <param name="obj">
+		/// An anonymous object, class, or record whose properties will be mapped to the entity.
+		/// All properties must exist on the entity type.
+		/// </param>
+		/// <returns>The inserted entity with generated key values populated.</returns>
+		Task<T> InsertAsync<T>(object obj) where T : class, new();
+
 		#endregion
 
 	#region <=== Update ===>
@@ -358,6 +386,38 @@ public interface IDbService
 	/// </param>
 	/// <returns>True if the entity was updated; otherwise, false.</returns>
 	Task<bool> UpdateAsync<T>(T entity, string[]? propertyNamesUpdateOnly = null) where T : class;
+
+	/// <summary>
+	/// Updates an entity by mapping properties from an anonymous object or any object instance
+	/// to the entity type <typeparamref name="T"/>. The object must contain all key properties.
+	/// Only the non-key properties present in the object are updated.
+	/// Property types must match exactly. Throws if the object contains properties not found on
+	/// the entity type.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="obj">
+	/// An anonymous object, class, or record whose properties will be mapped to the entity.
+	/// Must include all key properties of the entity type.
+	/// All properties must exist on the entity type.
+	/// </param>
+	/// <returns>True if the entity was updated; otherwise, false.</returns>
+	bool Update<T>(object obj) where T : class, new();
+
+	/// <summary>
+	/// Asynchronously updates an entity by mapping properties from an anonymous object or any
+	/// object instance to the entity type <typeparamref name="T"/>. The object must contain all
+	/// key properties. Only the non-key properties present in the object are updated.
+	/// Property types must match exactly. Throws if the object contains properties not found on
+	/// the entity type.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="obj">
+	/// An anonymous object, class, or record whose properties will be mapped to the entity.
+	/// Must include all key properties of the entity type.
+	/// All properties must exist on the entity type.
+	/// </param>
+	/// <returns>True if the entity was updated; otherwise, false.</returns>
+	Task<bool> UpdateAsync<T>(object obj) where T : class, new();
 
 	#endregion
 
@@ -1267,6 +1327,22 @@ public class DbService : IDbService
 			return entity;
 		}
 
+		/// <inheritdoc/>
+		public T Insert<T>(object obj) where T : class, new()
+		{
+			ArgumentNullException.ThrowIfNull(obj);
+			var entity = MapToEntityForInsert<T>(obj);
+			return Insert(entity);
+		}
+
+		/// <inheritdoc/>
+		public async Task<T> InsertAsync<T>(object obj) where T : class, new()
+		{
+			ArgumentNullException.ThrowIfNull(obj);
+			var entity = MapToEntityForInsert<T>(obj);
+			return await InsertAsync(entity);
+		}
+
 		#endregion
 
 		#region <=== Update ===>
@@ -1393,6 +1469,26 @@ public class DbService : IDbService
 		}
 
 		return affected > 0;
+	}
+
+	/// <inheritdoc/>
+	public bool Update<T>(object obj) where T : class, new()
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+		var (entity, propertyNames) = MapToEntityForUpdate<T>(obj);
+		if (propertyNames.Length == 0)
+			return false;
+		return Update(entity, propertyNames);
+	}
+
+	/// <inheritdoc/>
+	public async Task<bool> UpdateAsync<T>(object obj) where T : class, new()
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+		var (entity, propertyNames) = MapToEntityForUpdate<T>(obj);
+		if (propertyNames.Length == 0)
+			return false;
+		return await UpdateAsync(entity, propertyNames);
 	}
 
 	#endregion
@@ -2194,6 +2290,170 @@ public class DbService : IDbService
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	/// Creates a new instance of <typeparamref name="T"/> and maps matching properties
+	/// from the source object. Validates that property types match and that all source
+	/// properties exist on the entity type.
+	/// </summary>
+	private static T MapToEntityForInsert<T>(object obj) where T : class, new()
+	{
+		var entity = new T();
+		var entityProperties = typeof(T).GetProperties(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+		var entityPropsByName = entityProperties
+			.Where(p => p.CanWrite)
+			.ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
+
+		var sourceProperties = obj.GetType().GetProperties(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+		var typeMismatches = new List<string>();
+		var unknownProperties = new List<string>();
+
+		foreach (var sourceProp in sourceProperties)
+		{
+			if (!sourceProp.CanRead)
+				continue;
+
+			if (!entityPropsByName.TryGetValue(sourceProp.Name, out var entityProp))
+			{
+				unknownProperties.Add(sourceProp.Name);
+				continue;
+			}
+
+			if (sourceProp.PropertyType != entityProp.PropertyType)
+			{
+				typeMismatches.Add(
+					$"'{sourceProp.Name}' (source: {sourceProp.PropertyType.Name}, " +
+					$"entity: {entityProp.PropertyType.Name})");
+				continue;
+			}
+
+			var value = sourceProp.GetValue(obj);
+			entityProp.SetValue(entity, value);
+		}
+
+		if (unknownProperties.Count > 0)
+		{
+			throw new ArgumentException(
+				$"Unknown properties for entity {typeof(T).Name}: " +
+				string.Join(", ", unknownProperties),
+				nameof(obj));
+		}
+
+		if (typeMismatches.Count > 0)
+		{
+			throw new ArgumentException(
+				$"Type mismatch for properties on entity {typeof(T).Name}: " +
+				string.Join(", ", typeMismatches),
+				nameof(obj));
+		}
+
+		return entity;
+	}
+
+	/// <summary>
+	/// Creates a new instance of <typeparamref name="T"/> and maps matching properties
+	/// from the source object for update. Requires all key properties to be present.
+	/// Validates that property types match and that all source properties exist on the
+	/// entity type. Returns the entity and the list of non-key writable property names
+	/// that were mapped.
+	/// </summary>
+	private static (T Entity, string[] PropertyNames) MapToEntityForUpdate<T>(object obj)
+		where T : class, new()
+	{
+		var entity = new T();
+		var metadata = EntityMetadata.GetOrCreate<T>();
+
+		var sourceProperties = obj.GetType().GetProperties(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+		var sourcePropsByName = sourceProperties
+			.Where(p => p.CanRead)
+			.ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
+
+		var keyPropertyNames = metadata.KeyProperties
+			.Select(p => p.Name)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var typeMismatches = new List<string>();
+		var missingKeys = new List<string>();
+
+		foreach (var keyProp in metadata.KeyProperties)
+		{
+			if (!sourcePropsByName.TryGetValue(keyProp.Name, out var sourceProp))
+			{
+				missingKeys.Add(keyProp.Name);
+				continue;
+			}
+
+			if (sourceProp.PropertyType != keyProp.PropertyType)
+			{
+				typeMismatches.Add(
+					$"'{keyProp.Name}' (source: {sourceProp.PropertyType.Name}, " +
+					$"entity: {keyProp.PropertyType.Name})");
+				continue;
+			}
+
+			keyProp.SetValue(entity, sourceProp.GetValue(obj));
+		}
+
+		if (missingKeys.Count > 0)
+		{
+			throw new ArgumentException(
+				$"Missing required key properties for entity {typeof(T).Name}: " +
+				string.Join(", ", missingKeys),
+				nameof(obj));
+		}
+
+		var updatedPropertyNames = new List<string>();
+		var unknownProperties = new List<string>();
+
+		foreach (var sourceProp in sourceProperties)
+		{
+			if (!sourceProp.CanRead)
+				continue;
+
+			if (keyPropertyNames.Contains(sourceProp.Name))
+				continue;
+
+			if (!metadata.WritablePropertiesByName.TryGetValue(
+				sourceProp.Name, out var entityProp))
+			{
+				unknownProperties.Add(sourceProp.Name);
+				continue;
+			}
+
+			if (sourceProp.PropertyType != entityProp.PropertyType)
+			{
+				typeMismatches.Add(
+					$"'{sourceProp.Name}' (source: {sourceProp.PropertyType.Name}, " +
+					$"entity: {entityProp.PropertyType.Name})");
+				continue;
+			}
+
+			entityProp.SetValue(entity, sourceProp.GetValue(obj));
+			updatedPropertyNames.Add(entityProp.Name);
+		}
+
+		if (unknownProperties.Count > 0)
+		{
+			throw new ArgumentException(
+				$"Unknown properties for entity {typeof(T).Name}: " +
+				string.Join(", ", unknownProperties),
+				nameof(obj));
+		}
+
+		if (typeMismatches.Count > 0)
+		{
+			throw new ArgumentException(
+				$"Type mismatch for properties on entity {typeof(T).Name}: " +
+				string.Join(", ", typeMismatches),
+				nameof(obj));
+		}
+
+		return (entity, updatedPropertyNames.ToArray());
 	}
 
 	#endregion

@@ -69,6 +69,7 @@ public class MyService
 | `[Table("name")]` | Class | Specifies the database table name |
 | `[Key]` | Property | Marks property as auto-generated primary key (UUID) |
 | `[ExplicitKey]` | Property | Marks property as explicit primary key (user-provided) |
+| `[DbColumn("name")]` | Property | Specifies explicit database column name, overriding auto snake_case conversion |
 | `[External]` | Property | Excludes property from INSERT/UPDATE/SELECT operations |
 | `[Write(false)]` | Property | Prevents property from being written to database |
 | `[JsonColumn]` | Property | Property is serialized/deserialized as JSON |
@@ -275,6 +276,28 @@ public class UserRole
     public DateTime AssignedAt { get; set; }
 
     public Guid? AssignedBy { get; set; }
+}
+```
+
+### Entity with Custom Column Names
+
+```csharp
+// Use [DbColumn] to override the default snake_case column name mapping.
+// Properties without [DbColumn] still use auto snake_case conversion.
+[Table("legacy_users")]
+public class LegacyUser
+{
+    [Key]
+    [DbColumn("usr_id")]        // maps to "usr_id" instead of "id"
+    public Guid Id { get; set; }
+
+    [DbColumn("full_name")]      // maps to "full_name" instead of "display_name"
+    public string DisplayName { get; set; } = string.Empty;
+
+    [DbColumn("email_address")]  // maps to "email_address" instead of "email"
+    public string Email { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty; // uses default: "description"
 }
 ```
 
@@ -541,6 +564,28 @@ var userRole = new UserRole
 
 var insertedRole = await _db.InsertAsync(userRole);
 // insertedRole.UserId and insertedRole.RoleId are populated
+
+// Insert from anonymous object - maps matching properties to entity
+var newUser = await _db.InsertAsync<User>(new
+{
+    Email = "jane@example.com",
+    Username = "jane_doe",
+    PasswordHash = "hashed_password",
+    IsActive = true,
+    CreatedAt = DateTime.UtcNow
+});
+// newUser.Id is auto-generated, unmapped properties use defaults
+
+// Insert from anonymous object (sync)
+var newUser = _db.Insert<User>(new
+{
+    Email = "jane@example.com",
+    Username = "jane_doe",
+    CreatedAt = DateTime.UtcNow
+});
+
+// Type mismatches throw ArgumentException
+// _db.Insert<User>(new { Email = 123 }); // throws: Type mismatch for 'Email'
 ```
 
 ### Get (Single Entity)
@@ -632,6 +677,32 @@ bool updated = _db.Update(user, ["Email"]);
 // Update returns false if entity not found
 var nonExistentUser = new User { Id = Guid.NewGuid() };
 bool updated = await _db.UpdateAsync(nonExistentUser); // false
+
+// Update from anonymous object - partial update with only specified properties
+// The object must include all key properties (Id) for record lookup
+bool updated = await _db.UpdateAsync<User>(new
+{
+    Id = userId,
+    Email = "updated@example.com",
+    UpdatedAt = DateTime.UtcNow
+});
+// Only Email and UpdatedAt are updated; all other columns remain unchanged
+
+// Update from anonymous object (sync)
+bool updated = _db.Update<User>(new
+{
+    Id = userId,
+    Username = "new_username"
+});
+
+// Key-only object returns false (nothing to update)
+bool updated = await _db.UpdateAsync<User>(new { Id = userId }); // false
+
+// Missing key throws ArgumentException
+// _db.Update<User>(new { Email = "x" }); // throws: Missing required key properties
+
+// Type mismatches throw ArgumentException
+// _db.Update<User>(new { Id = userId, Email = 123 }); // throws: Type mismatch
 ```
 
 ### Delete
@@ -2000,10 +2071,12 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `ExecuteScalarAsync<T>` | Async version of ExecuteScalar |
 | `GetDataTable` | Execute query and return DataTable |
 | `GetDataTableAsync` | Async version of GetDataTable |
-| `Insert<T>` | Insert entity, return inserted entity with generated keys |
-| `InsertAsync<T>` | Async version of Insert |
-| `Update<T>` | Update entity (all or specific properties) |
-| `UpdateAsync<T>` | Async version of Update |
+| `Insert<T>(T)` | Insert entity, return inserted entity with generated keys |
+| `Insert<T>(object)` | Insert from anonymous object with property mapping and type validation |
+| `InsertAsync<T>` | Async versions of Insert (2 overloads) |
+| `Update<T>(T)` | Update entity (all or specific properties) |
+| `Update<T>(object)` | Partial update from anonymous object; requires key properties |
+| `UpdateAsync<T>` | Async versions of Update (2 overloads) |
 | `Delete<T>(T)` | Delete entity by entity reference |
 | `Delete<T>(Guid)` | Delete entity by single key |
 | `Delete<T>(Dictionary)` | Delete entity by composite key using dictionary |
@@ -2053,6 +2126,12 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 ---
 
 ## Version History
+
+### v1.2.2
+- Added `[DbColumn("name")]` attribute for specifying explicit database column names, overriding the default snake_case conversion
+- Added `Insert<T>(object)` and `InsertAsync<T>(object)` for inserting entities from anonymous objects with property mapping and type validation
+- Added `Update<T>(object)` and `UpdateAsync<T>(object)` for partial updates from anonymous objects — requires key properties, updates only the non-key properties present in the object
+
 
 ### v1.2.1
 - **Enhanced Developer Experience**: Comprehensive documentation integration with IntelliSense-friendly examples

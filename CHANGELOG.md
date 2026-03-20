@@ -1,5 +1,13 @@
 # WebVella.Database Changelog
 
+## [1.2.2] - 2026-03-20
+
+### ✨ New Features
+- **DbColumn Attribute**: Added `[DbColumn("name")]` attribute to specify explicit database column names for entity properties, overriding the default snake_case conversion
+- **Insert from Object**: Added `Insert<T>(object)` and `InsertAsync<T>(object)` overloads that accept anonymous objects, classes, or records and map their properties to the entity type with type validation
+- **Update from Object**: Added `Update<T>(object)` and `UpdateAsync<T>(object)` overloads that accept anonymous objects with key properties for record lookup and partial update support — only the non-key properties present in the object are updated
+- **Property Type Validation**: Both Insert and Update object overloads validate that matching property names have identical types, throwing `ArgumentException` with detailed mismatch information
+
 ## [1.2.1] - 2026-03-19
 
 ### 🚀 Enhanced Developer Experience
@@ -7,7 +15,7 @@
 - **MSBuild Integration**: Added `.targets` file that automatically makes documentation available to consuming projects
 - **IntelliSense-Friendly Examples**: Created `WebVellaDatabaseExamples` class with structured code examples for better IDE support
 - **Enhanced XML Documentation**: Significantly improved interface documentation with practical examples and feature highlights
-- **Quick Reference Guide**: Added `docs/quick-reference.md` for rapid development reference
+- **Quick Reference Guide**: Added `docs/webvella.database.quick-ref.md` for rapid development reference
 
 ### 🤖 AI/Copilot Integration Improvements
 - **Source Link Support**: Connected NuGet package directly to GitHub repository for enhanced tooling
@@ -76,4 +84,4 @@
 ## Links
 - 📦 [NuGet Package](https://www.nuget.org/packages/WebVella.Database/)
 - 📂 [GitHub Repository](https://github.com/WebVella/WebVella.Database)
-- 📖 [Documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md)
+- 📖 [Documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md)

@@ -149,7 +149,7 @@ var userCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users");
 | **Composite Keys** | Support for multi-column primary keys |
 
 ## Documentation
-- 📖 [Complete Documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md)
+- 📖 [Complete Documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md)
 - 📦 [NuGet Package](https://www.nuget.org/packages/WebVella.Database/)
 - 📂 [GitHub Repository](https://github.com/WebVella/WebVella.Database)
 

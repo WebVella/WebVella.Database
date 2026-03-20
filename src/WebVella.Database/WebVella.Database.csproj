@@ -9,8 +9,8 @@
 		<OutputType>Library</OutputType>
 		<PackageId>$(AssemblyName)</PackageId>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-		<Description>A lightweight, high-performance Postgres data access library built on Dapper with nested transactions, advisory locks, RLS, and migrations. Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md</Description>
-		<Version>1.2.1</Version>
+		<Description>A lightweight, high-performance Postgres data access library built on Dapper with nested transactions, advisory locks, RLS, and migrations. Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md</Description>
+		<Version>1.2.2</Version>
 		<Authors>WebVella</Authors>
 		<Company>WebVella</Company>
 		<Copyright>WebVella 2026</Copyright>
@@ -22,7 +22,7 @@
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<Title>WebVella.Database</Title>
 		<PackageTags>postgres;postgresql;dapper;transactions;advisory-locks;rls;migrations;database;nested-transactions</PackageTags>
-		<PackageReleaseNotes>v1.2.1: Enhanced developer experience with comprehensive documentation integration, IntelliSense-friendly examples, Source Link support, and improved Copilot integration. Includes MSBuild .targets file for automatic documentation availability in consuming projects.</PackageReleaseNotes>
+		<PackageReleaseNotes>v1.2.2: Added Insert and Update overloads accepting anonymous objects with property mapping and type validation. Partial update support for object-based updates. Documentation file renames for clarity.</PackageReleaseNotes>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 
 		<!-- Enhanced XML Documentation -->

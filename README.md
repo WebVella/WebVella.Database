@@ -493,7 +493,7 @@ var orders = await _db.QueryWithJoinAsync<Order, OrderLine, OrderNote>(
 **Note:** The `splitOn` parameter tells Dapper where to split the columns between entity types. For multiple children, use comma-separated column names. The child key selectors should return each child's unique identifier (primary key) for proper deduplication when JOINs produce Cartesian products.
 
 ## Documentation
-[View complete documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/index.md)
+[View complete documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md)
 
 ## License
 [![Library license details](https://img.shields.io/badge/%F0%9F%93%9C%0A%20read-license%20details-blue?style=for-the-badge)](https://github.com/WebVella/WebVella.Database/blob/main/LICENSE/)

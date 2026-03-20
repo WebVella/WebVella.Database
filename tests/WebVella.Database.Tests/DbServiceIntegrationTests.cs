@@ -2663,4 +2663,478 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 	}
 
 	#endregion
+
+	#region <=== Insert From Object Tests ===>
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_ShouldInsertEntityWithMappedProperties()
+	{
+		var obj = new
+		{
+			Name = "Anonymous Product",
+			Price = 49.99m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var inserted = await _dbService.InsertAsync<TestProduct>(obj);
+
+		inserted.Id.Should().NotBe(Guid.Empty);
+		inserted.Name.Should().Be("Anonymous Product");
+		inserted.Price.Should().Be(49.99m);
+		inserted.Quantity.Should().Be(10);
+		inserted.IsActive.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_ShouldPersistToDatabase()
+	{
+		var obj = new
+		{
+			Name = "Persisted Anonymous",
+			Price = 29.99m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var inserted = await _dbService.InsertAsync<TestProduct>(obj);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(inserted.Id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Persisted Anonymous");
+		retrieved.Price.Should().Be(29.99m);
+		retrieved.IsActive.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_WithPartialProperties_ShouldUseDefaults()
+	{
+		var obj = new
+		{
+			Name = "Partial Props",
+			Price = 10.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var inserted = await _dbService.InsertAsync<TestProduct>(obj);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(inserted.Id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Partial Props");
+		retrieved.Price.Should().Be(10.00m);
+		retrieved.Quantity.Should().Be(0);
+		retrieved.IsActive.Should().BeFalse();
+		retrieved.Description.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_WithExtraProperties_ShouldThrow()
+	{
+		var obj = new
+		{
+			Name = "Extra Props",
+			Price = 15.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			NonExistentProperty = "should throw"
+		};
+
+		var act = async () => await _dbService.InsertAsync<TestProduct>(obj);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Unknown properties*NonExistentProperty*");
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_WithTypeMismatch_ShouldThrow()
+	{
+		var obj = new
+		{
+			Name = 12345,
+			Price = 10.00m,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var act = async () => await _dbService.InsertAsync<TestProduct>(obj);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Type mismatch*Name*");
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_WithNullArgument_ShouldThrow()
+	{
+		var act = async () => await _dbService.InsertAsync<TestProduct>((object)null!);
+
+		await act.Should().ThrowAsync<ArgumentNullException>();
+	}
+
+	[Fact]
+	public void Insert_FromAnonymousObject_ShouldInsertEntityWithMappedProperties()
+	{
+		var obj = new
+		{
+			Name = "Sync Anonymous Product",
+			Price = 39.99m,
+			Quantity = 5,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var inserted = _dbService.Insert<TestProduct>(obj);
+
+		inserted.Id.Should().NotBe(Guid.Empty);
+		inserted.Name.Should().Be("Sync Anonymous Product");
+		inserted.Price.Should().Be(39.99m);
+
+		var retrieved = _dbService.Get<TestProduct>(inserted.Id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Sync Anonymous Product");
+	}
+
+	[Fact]
+	public void Insert_FromAnonymousObject_WithTypeMismatch_ShouldThrow()
+	{
+		var obj = new
+		{
+			Name = "Valid",
+			Price = "not a decimal",
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var act = () => _dbService.Insert<TestProduct>(obj);
+
+		act.Should().Throw<ArgumentException>()
+			.WithMessage("*Type mismatch*Price*");
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_WithNullableProperty_ShouldMapCorrectly()
+	{
+		var obj = new
+		{
+			Name = "Nullable Test",
+			Price = 20.00m,
+			IsActive = true,
+			Description = (string?)null,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		var inserted = await _dbService.InsertAsync<TestProduct>(obj);
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(inserted.Id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Nullable Test");
+		retrieved.Description.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task InsertAsync_FromAnonymousObject_MultipleInserts_ShouldGenerateUniqueIds()
+	{
+		var ids = new List<Guid>();
+		for (int i = 1; i <= 3; i++)
+		{
+			var obj = new
+			{
+				Name = $"Multi Insert {i}",
+				Price = i * 10.00m,
+				IsActive = true,
+				CreatedAt = DateTime.UtcNow
+			};
+
+			var inserted = await _dbService.InsertAsync<TestProduct>(obj);
+			ids.Add(inserted.Id);
+		}
+
+		ids.Should().HaveCount(3);
+		ids.Should().OnlyHaveUniqueItems();
+		ids.Should().NotContain(Guid.Empty);
+	}
+
+	#endregion
+
+	#region <=== Update From Object Tests ===>
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_ShouldUpdateOnlySpecifiedProperties()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Description = "Original Desc",
+			Price = 10.00m,
+			Quantity = 50,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var inserted = await _dbService.InsertAsync(product);
+
+		var updateObj = new
+		{
+			Id = inserted.Id,
+			Name = "Updated Name",
+			Price = 99.99m
+		};
+
+		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(inserted.Id);
+		retrieved.Should().NotBeNull();
+		retrieved!.Name.Should().Be("Updated Name");
+		retrieved.Price.Should().Be(99.99m);
+		retrieved.Description.Should().Be("Original Desc");
+		retrieved.Quantity.Should().Be(50);
+		retrieved.IsActive.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithSingleProperty_ShouldUpdateOnlyThat()
+	{
+		var product = new TestProduct
+		{
+			Name = "Original",
+			Price = 25.00m,
+			Quantity = 10,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		};
+		var inserted = await _dbService.InsertAsync(product);
+
+		var updateObj = new
+		{
+			Id = inserted.Id,
+			Name = "Only Name Updated"
+		};
+
+		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(inserted.Id);
+		retrieved!.Name.Should().Be("Only Name Updated");
+		retrieved.Price.Should().Be(25.00m);
+		retrieved.Quantity.Should().Be(10);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_MissingKey_ShouldThrow()
+	{
+		var updateObj = new
+		{
+			Name = "No Key Provided"
+		};
+
+		var act = async () => await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Missing required key properties*Id*");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithTypeMismatch_ShouldThrow()
+	{
+		var product = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id,
+			Price = "not a decimal"
+		};
+
+		var act = async () => await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Type mismatch*Price*");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithNonExistentId_ShouldReturnFalse()
+	{
+		var updateObj = new
+		{
+			Id = Guid.NewGuid(),
+			Name = "Non Existent"
+		};
+
+		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		updated.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithNull_ShouldThrow()
+	{
+		var act = async () => await _dbService.UpdateAsync<TestProduct>((object)null!);
+
+		await act.Should().ThrowAsync<ArgumentNullException>();
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithExtraProperties_ShouldThrow()
+	{
+		var product = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Original",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id,
+			Name = "Updated",
+			NonExistentProperty = "should throw"
+		};
+
+		var act = async () => await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		await act.Should().ThrowAsync<ArgumentException>()
+			.WithMessage("*Unknown properties*NonExistentProperty*");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_ShouldOnlyAffectTargetEntity()
+	{
+		var product1 = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product 1",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+		var product2 = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Product 2",
+			Price = 20.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product1.Id,
+			Name = "Product 1 Updated"
+		};
+		await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		var retrieved1 = await _dbService.GetAsync<TestProduct>(product1.Id);
+		var retrieved2 = await _dbService.GetAsync<TestProduct>(product2.Id);
+
+		retrieved1!.Name.Should().Be("Product 1 Updated");
+		retrieved2!.Name.Should().Be("Product 2");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_WithNullableProperty_ShouldSetToNull()
+	{
+		var product = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Has Description",
+			Description = "Some description",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id,
+			Description = (string?)null
+		};
+
+		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		updated.Should().BeTrue();
+
+		var retrieved = await _dbService.GetAsync<TestProduct>(product.Id);
+		retrieved!.Description.Should().BeNull();
+		retrieved.Name.Should().Be("Has Description");
+	}
+
+	[Fact]
+	public void Update_FromAnonymousObject_ShouldUpdateOnlySpecifiedProperties()
+	{
+		var product = _dbService.Insert(new TestProduct
+		{
+			Name = "Sync Original",
+			Description = "Sync Desc",
+			Price = 15.00m,
+			Quantity = 30,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id,
+			Name = "Sync Updated",
+			Quantity = 99
+		};
+
+		var updated = _dbService.Update<TestProduct>(updateObj);
+
+		updated.Should().BeTrue();
+
+		var retrieved = _dbService.Get<TestProduct>(product.Id);
+		retrieved!.Name.Should().Be("Sync Updated");
+		retrieved.Quantity.Should().Be(99);
+		retrieved.Description.Should().Be("Sync Desc");
+		retrieved.Price.Should().Be(15.00m);
+	}
+
+	[Fact]
+	public void Update_FromAnonymousObject_WithTypeMismatch_ShouldThrow()
+	{
+		var product = _dbService.Insert(new TestProduct
+		{
+			Name = "Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id,
+			Name = 12345
+		};
+
+		var act = () => _dbService.Update<TestProduct>(updateObj);
+
+		act.Should().Throw<ArgumentException>()
+			.WithMessage("*Type mismatch*Name*");
+	}
+
+	[Fact]
+	public async Task UpdateAsync_FromAnonymousObject_KeyOnly_ShouldReturnFalse()
+	{
+		var product = await _dbService.InsertAsync(new TestProduct
+		{
+			Name = "Key Only Test",
+			Price = 10.00m,
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow
+		});
+
+		var updateObj = new
+		{
+			Id = product.Id
+		};
+
+		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
+
+		updated.Should().BeFalse();
+	}
+
+	#endregion
 }
