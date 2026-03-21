@@ -25,6 +25,7 @@ public class DbMigrationIntegrationTests : IAsyncLifetime
 	{
 		await _fixture.CleanupMigrationArtifactsAsync();
 		TestMigration_1_0_4_0_WithPostMigrate.PostMigrateCalled = false;
+		TestMigration_1_0_6_0_WithPreMigrate.PreMigrateCalled = false;
 	}
 
 	public Task DisposeAsync() => Task.CompletedTask;
@@ -305,6 +306,34 @@ public class DbMigrationIntegrationTests : IAsyncLifetime
 		columnExists.Should().BeTrue("embedded_source column should be created by embedded resource migration");
 	}
 
+	[Fact]
+	public async Task ExecutePendingMigrationsAsync_ShouldCallPreMigrateAsync()
+	{
+		var isolatedDbService = _fixture.CreateIsolatedDbService();
+		var options = new DbMigrationOptions();
+		var migrationService = new DbMigrationService(_fixture.ServiceProvider, isolatedDbService, options);
+		TestMigration_1_0_6_0_WithPreMigrate.PreMigrateCalled = false;
+
+		await migrationService.ExecutePendingMigrationsAsync();
+
+		TestMigration_1_0_6_0_WithPreMigrate.PreMigrateCalled.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task ExecutePendingMigrationsAsync_ShouldExecuteScriptPathMigration()
+	{
+		var isolatedDbService = _fixture.CreateIsolatedDbService();
+		var options = new DbMigrationOptions();
+		var migrationService = new DbMigrationService(_fixture.ServiceProvider, isolatedDbService, options);
+
+		await migrationService.ExecutePendingMigrationsAsync();
+
+		var count = await isolatedDbService.ExecuteScalarAsync<long>(
+			"SELECT COUNT(*) FROM test_migration_table WHERE name = 'Script Path Item'");
+
+		count.Should().Be(1, "script path migration should insert data from explicit resource");
+	}
+
 	#endregion
 
 	#region <=== DbMigration Tests ===>
@@ -366,6 +395,29 @@ public class DbMigrationIntegrationTests : IAsyncLifetime
 		sql.Should().Contain("INSERT INTO test_migration_table");
 	}
 
+	[Fact]
+	public async Task DbMigration_PreMigrateAsync_ShouldBeCallable()
+	{
+		var migration = new TestMigration_1_0_6_0_WithPreMigrate();
+		TestMigration_1_0_6_0_WithPreMigrate.PreMigrateCalled = false;
+
+		await migration.PreMigrateAsync(_fixture.ServiceProvider);
+
+		TestMigration_1_0_6_0_WithPreMigrate.PreMigrateCalled.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task DbMigration_WithScriptPath_ShouldLoadExplicitResource()
+	{
+		var migration = new TestMigration_1_0_7_0_WithScriptPath();
+
+		var sql = await migration.GenerateSqlAsync(_fixture.ServiceProvider);
+
+		sql.Should().NotBeNullOrEmpty();
+		sql.Should().Contain("INSERT INTO test_migration_table");
+		sql.Should().Contain("Script Path Item");
+	}
+
 	#endregion
 
 	#region <=== DbMigrationAttribute Tests ===>
@@ -388,6 +440,18 @@ public class DbMigrationIntegrationTests : IAsyncLifetime
 
 		attr.Should().NotBeNull();
 		attr!.Version.Should().Be(new Version(1, 0, 2, 0));
+	}
+
+	[Fact]
+	public void DbMigrationAttribute_WithScriptPath_ShouldSetScriptPath()
+	{
+		var type = typeof(TestMigration_1_0_7_0_WithScriptPath);
+		var attr = (DbMigrationAttribute?)Attribute.GetCustomAttribute(type, typeof(DbMigrationAttribute));
+
+		attr.Should().NotBeNull();
+		attr!.Version.Should().Be(new Version(1, 0, 7, 0));
+		attr.ScriptPath.Should().NotBeNullOrEmpty();
+		attr.ScriptPath.Should().Contain("ExplicitScript.sql");
 	}
 
 	#endregion

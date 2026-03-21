@@ -129,6 +129,7 @@ public class DbMigrationService : IDbMigrationService
 			foreach (var migration in pendingMigrations)
 			{
 				await _db.ExecuteAsync($"TRUNCATE TABLE {_updateLogTableName};");
+				await migration.Instance.PreMigrateAsync(_serviceProvider);
 				var rawSql = await migration.Instance.GenerateSqlAsync(_serviceProvider);
 
 				if (!string.IsNullOrWhiteSpace(rawSql))
@@ -175,10 +176,13 @@ public class DbMigrationService : IDbMigrationService
 			await CleanupMigrationArtifactsAsync();
 			await scope.CompleteAsync();
 		}
-		catch
+		catch (Exception ex)
 		{
 			await SafeCleanupMigrationArtifactsAsync();
-			throw;
+			if (ex is DbMigrationException)
+				throw;
+			throw new DbMigrationException(
+				$"An unexpected error occurred during migration: {ex.Message}", ex);
 		}
 	}
 
@@ -219,78 +223,78 @@ public class DbMigrationService : IDbMigrationService
 			// Ignore cleanup errors - transaction may be aborted
 		}
 
-			try
-			{
-				await _db.ExecuteAsync($"DROP FUNCTION IF EXISTS {_updateFunctionName}();");
-			}
-			catch
-			{
-				// Ignore cleanup errors - transaction may be aborted
-			}
-		}
-
-		/// <inheritdoc />
-		public async Task<Version> GetCurrentDbVersionAsync()
+		try
 		{
-			try
-			{
-				await EnsureVersionTableExistsAsync();
-				var sql = $"SELECT version FROM {_versionTableName} WHERE id = 1";
-				var v = await _db.ExecuteScalarAsync<string>(sql);
-				return string.IsNullOrEmpty(v) ? new Version(0, 0, 0, 0) : new Version(v);
-			}
-			catch { return new Version(0, 0, 0, 0); }
+			await _db.ExecuteAsync($"DROP FUNCTION IF EXISTS {_updateFunctionName}();");
 		}
-
-		/// <summary>
-		/// Updates the database version to the specified version.
-		/// </summary>
-		private async Task UpdateDbVersionAsync(Version version)
+		catch
 		{
-			var sql = $@"
+			// Ignore cleanup errors - transaction may be aborted
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<Version> GetCurrentDbVersionAsync()
+	{
+		try
+		{
+			await EnsureVersionTableExistsAsync();
+			var sql = $"SELECT version FROM {_versionTableName} WHERE id = 1";
+			var v = await _db.ExecuteScalarAsync<string>(sql);
+			return string.IsNullOrEmpty(v) ? new Version(0, 0, 0, 0) : new Version(v);
+		}
+		catch { return new Version(0, 0, 0, 0); }
+	}
+
+	/// <summary>
+	/// Updates the database version to the specified version.
+	/// </summary>
+	private async Task UpdateDbVersionAsync(Version version)
+	{
+		var sql = $@"
 				INSERT INTO {_versionTableName} (id, version, updated_on) 
 				VALUES (1, @version, CURRENT_TIMESTAMP)
 				ON CONFLICT (id) DO UPDATE SET version = @version, updated_on = CURRENT_TIMESTAMP";
-			await _db.ExecuteAsync(sql, new { version = version.ToString() });
-		}
+		await _db.ExecuteAsync(sql, new { version = version.ToString() });
+	}
 
-		/// <summary>
-		/// Releases all advisory locks before starting migrations to prevent deadlocks.
-		/// </summary>
-		private async Task ReleaseAllAdvisoryLocks()
-		{
-			var sql = "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory';";
-			await _db.ExecuteAsync(sql);
-		}
+	/// <summary>
+	/// Releases all advisory locks before starting migrations to prevent deadlocks.
+	/// </summary>
+	private async Task ReleaseAllAdvisoryLocks()
+	{
+		var sql = "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory';";
+		await _db.ExecuteAsync(sql);
+	}
 
-		/// <summary>
-		/// Scans all loaded assemblies for migration classes and returns their metadata.
-		/// </summary>
-		private async Task<List<DbMigrationMeta>> ScanAndGetMigrationMeta()
+	/// <summary>
+	/// Scans all loaded assemblies for migration classes and returns their metadata.
+	/// </summary>
+	private async Task<List<DbMigrationMeta>> ScanAndGetMigrationMeta()
+	{
+		var result = new List<DbMigrationMeta>();
+		var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic);
+		foreach (var assembly in assemblies)
 		{
-			var result = new List<DbMigrationMeta>();
-			var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic);
-			foreach (var assembly in assemblies)
+			foreach (var type in assembly.GetTypes())
 			{
-				foreach (var type in assembly.GetTypes())
+				if (type.IsSubclassOf(typeof(DbMigration)) && !type.IsAbstract)
 				{
-					if (type.IsSubclassOf(typeof(DbMigration)) && !type.IsAbstract)
+					var attr = type.GetCustomAttribute<DbMigrationAttribute>();
+					if (attr != null && type.FullName != null)
 					{
-						var attr = type.GetCustomAttribute<DbMigrationAttribute>();
-						if (attr != null && type.FullName != null)
-						{
-							var instance = Activator.CreateInstance(type) as DbMigration;
-							if (instance != null)
-								result.Add(new DbMigrationMeta
-								{
-									Version = attr.Version,
-									MigrationClassName = type.FullName,
-									Instance = instance
-								});
-						}
+						var instance = Activator.CreateInstance(type) as DbMigration;
+						if (instance != null)
+							result.Add(new DbMigrationMeta
+							{
+								Version = attr.Version,
+								MigrationClassName = type.FullName,
+								Instance = instance
+							});
 					}
 				}
 			}
-			return await Task.FromResult(result);
 		}
+		return await Task.FromResult(result);
+	}
 }

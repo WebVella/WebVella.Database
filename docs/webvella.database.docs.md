@@ -10,6 +10,8 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
 4. [Sample Entity Models](#sample-entity-models)
 5. [Basic CRUD Operations](#basic-crud-operations)
 6. [Query Methods](#query-methods)
+   - [Fluent Query Builder](#fluent-query-builder)
+   - [Raw SQL Queries](#raw-sql-queries)
 7. [Execute Methods](#execute-methods)
 8. [Multi-Query Methods](#multi-query-methods)
 9. [QueryWithJoin Methods](#querywith-join-methods)
@@ -19,6 +21,7 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
 13. [Row Level Security](#row-level-security)
 14. [Database Migrations](#database-migrations)
 15. [Best Practices](#best-practices)
+16. [Version History](#version-history)
 
 ---
 
@@ -740,7 +743,276 @@ bool deleted = await _db.DeleteAsync<User>(Guid.NewGuid()); // false
 
 ## Query Methods
 
-### Basic Query
+### Fluent Query Builder
+
+`Query<T>()` returns a `DbQuery<T>` that translates LINQ expression predicates into
+parameterised PostgreSQL SQL. No SQL strings needed.
+
+```csharp
+var orders = await _db.Query<Order>()
+    .Where(o => o.Status == OrderStatus.Pending && o.TotalAmount > 50m)
+    .OrderByDescending(o => o.CreatedAt)
+    .Limit(20)
+    .ToListAsync();
+```
+
+#### Builder Methods
+
+| Method | SQL Produced | Notes |
+|--------|-------------|-------|
+| `.Where(predicate)` | `WHERE ...` | Multiple calls combined with `AND` |
+| `.OrderBy(prop)` | `ORDER BY col` | Primary ascending sort |
+| `.OrderByDescending(prop)` | `ORDER BY col DESC` | Primary descending sort |
+| `.ThenBy(prop)` | `, col` | Secondary ascending sort |
+| `.ThenByDescending(prop)` | `, col DESC` | Secondary descending sort |
+| `.Limit(n)` | `LIMIT n` | Maximum rows to return; must be ≥ 0 |
+| `.Offset(n)` | `OFFSET n` | Rows to skip; must be ≥ 0 |
+| `.WithPaging(page, pageSize)` | `LIMIT n OFFSET m` | 1-based page-number pagination |
+
+#### Terminal Methods
+
+| Method | SQL | Returns |
+|--------|-----|---------|
+| `ToListAsync()` | `SELECT * FROM ...` | All matching rows as `IEnumerable<T>` |
+| `FirstOrDefaultAsync()` | `SELECT ... LIMIT 1` | First match or `null` |
+| `CountAsync()` | `SELECT COUNT(*) FROM ...` | Total matching rows as `long` |
+| `ExistsAsync()` | `SELECT EXISTS(SELECT 1 ...)` | `true` if any row matches |
+| `ToList()` | `SELECT * FROM ...` | Sync — all matching rows |
+| `FirstOrDefault()` | `SELECT ... LIMIT 1` | Sync — first match or `null` |
+| `Count()` | `SELECT COUNT(*) FROM ...` | Sync — total as `long` |
+| `Exists()` | `SELECT EXISTS(SELECT 1 ...)` | Sync — `true` if any row matches |
+
+#### Supported WHERE Patterns
+
+##### Equality and Comparison
+
+```csharp
+.Where(u => u.Name == "Alice")              // name = @p0
+.Where(u => u.Name != "Alice")              // name != @p0
+.Where(u => u.Price < 100m)                 // price < @p0
+.Where(u => u.Price <= 100m)                // price <= @p0
+.Where(u => u.Price > 10m)                  // price > @p0
+.Where(u => u.Price >= 10m)                 // price >= @p0
+```
+
+##### Boolean Shorthand
+
+```csharp
+.Where(u => u.IsActive)                     // is_active = @p0  (true)
+.Where(u => !u.IsActive)                    // is_active = @p0  (false)
+.Where(u => u.IsActive == true)             // is_active = @p0  (true)
+.Where(u => u.IsActive == false)            // is_active = @p0  (false)
+```
+
+##### Null Checks
+
+```csharp
+.Where(u => u.Description == null)          // description IS NULL
+.Where(u => u.Description != null)          // description IS NOT NULL
+```
+
+##### Logical Operators
+
+```csharp
+.Where(u => u.IsActive && u.Price > 10m)    // (is_active = @p0 AND price > @p1)
+.Where(u => u.IsActive || u.IsAdmin)        // (is_active = @p0 OR is_admin = @p1)
+.Where(u => !(u.Price > 100m))              // NOT (price > @p0)
+
+// Nested grouping preserves operator precedence
+.Where(u => (u.Role == Role.Admin || u.Role == Role.Manager) && u.IsActive)
+// ((role = @p0 OR role = @p1) AND is_active = @p2)
+```
+
+##### Multiple Where Calls (combined with AND)
+
+```csharp
+await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .Where(o => o.TotalAmount > 50m)
+    .Where(o => o.CreatedAt > cutoffDate)
+    .ToListAsync();
+// WHERE is_active = @p0 AND total_amount > @p1 AND created_at > @p2
+```
+
+##### Enum Values (auto-converted to int)
+
+```csharp
+.Where(u => u.Status == UserStatus.Active)           // status = @p0  (value: 1)
+.Where(u => u.Role   != UserRole.Admin)              // role   != @p0
+.Where(u => u.Status == UserStatus.Active
+         || u.Status == UserStatus.Pending)          // (status = @p0 OR status = @p1)
+```
+
+##### Captured Variables and Closures
+
+```csharp
+var minAmount = 50m;
+var cutoff    = DateTime.UtcNow.AddDays(-30);
+
+await _db.Query<Order>()
+    .Where(o => o.TotalAmount >= minAmount && o.CreatedAt > cutoff)
+    .ToListAsync();
+```
+
+##### String Methods — LIKE (case-sensitive)
+
+`%`, `_`, and `\` in the search value are automatically escaped.
+
+```csharp
+.Where(u => u.Email.Contains("@example.com"))    // email LIKE @p0  ('%@example.com%')
+.Where(u => u.Name.StartsWith("John"))           // name  LIKE @p0  ('John%')
+.Where(u => u.Name.EndsWith("son"))              // name  LIKE @p0  ('%son')
+.Where(u => u.Name.Contains("50%"))              // name  LIKE @p0  ('%50\%%')  — % escaped
+.Where(u => u.Code.Contains("item_1"))           // code  LIKE @p0  ('%item\_1%') — _ escaped
+```
+
+##### String Methods — ILIKE (case-insensitive)
+
+Extension methods from `DbStringExtensions`. Valid inside `.Where()` predicates only;
+calling them directly always throws `InvalidOperationException`.
+
+```csharp
+.Where(u => u.Name.ILikeContains("admin"))       // name ILIKE @p0  ('%admin%')
+.Where(u => u.Name.ILikeStartsWith("john"))      // name ILIKE @p0  ('john%')
+.Where(u => u.Name.ILikeEndsWith("son"))         // name ILIKE @p0  ('%son')
+```
+
+##### Case Folding — LOWER / UPPER
+
+```csharp
+.Where(u => u.Email.ToLower()          == "alice@example.com")  // LOWER(email) = @p0
+.Where(u => u.Email.ToLowerInvariant() == "alice@example.com")  // LOWER(email) = @p0
+.Where(u => u.Code.ToUpper()           == "ABC-001")             // UPPER(code)  = @p0
+.Where(u => u.Code.ToUpperInvariant()  == "ABC-001")             // UPPER(code)  = @p0
+```
+
+##### Collection Membership — ANY
+
+```csharp
+// Instance Contains
+var ids = new List<Guid> { id1, id2, id3 };
+.Where(u => ids.Contains(u.Id))                  // id = ANY(@p0)
+
+// Static Enumerable.Contains
+var ids = new[] { id1, id2 };
+.Where(u => Enumerable.Contains(ids, u.Id))      // id = ANY(@p0)
+
+// Empty collection short-circuits to no rows (no database call for evaluation)
+var empty = new List<Guid>();
+.Where(u => empty.Contains(u.Id))                // 1 = 0
+```
+
+#### Unsupported Patterns
+
+The following expressions throw `NotSupportedException` at query execution time.
+Use the raw SQL `QueryAsync<T>` / `Query<T>` methods for these cases.
+
+```csharp
+// ❌ Arithmetic operators inside WHERE
+.Where(u => (u.Price + 10m) > 100m)
+.Where(u => (u.Quantity * u.Price) > 500m)
+
+// ❌ String methods other than Contains / StartsWith / EndsWith / ToLower / ToUpper
+.Where(u => u.Name.Trim() == "Alice")
+.Where(u => u.Name.Replace(" ", "") == "Alice")
+
+// ❌ Static methods (other than Enumerable.Contains)
+.Where(u => Math.Abs(u.Delta) > 5)
+.Where(u => string.IsNullOrEmpty(u.Name))
+
+// ❌ Nested property navigation
+.Where(u => u.Address.City == "Sofia")
+
+// ❌ Ternary / conditional expressions
+.Where(u => (u.IsActive ? u.Price : 0m) > 10m)
+
+// ❌ Index / element access
+.Where(u => u.Tags[0] == "featured")
+```
+
+#### Ordering
+
+```csharp
+// Single column ascending
+await _db.Query<Order>().OrderBy(o => o.CreatedAt).ToListAsync();
+
+// Single column descending
+await _db.Query<Order>().OrderByDescending(o => o.TotalAmount).ToListAsync();
+
+// Multiple columns
+await _db.Query<Order>()
+    .OrderBy(o => o.Status)
+    .ThenByDescending(o => o.TotalAmount)
+    .ThenBy(o => o.CreatedAt)
+    .ToListAsync();
+// ORDER BY status, total_amount DESC, created_at
+```
+
+#### Pagination
+
+```csharp
+// Explicit Limit / Offset
+var page = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .OrderBy(o => o.CreatedAt)
+    .Offset(20)
+    .Limit(10)
+    .ToListAsync();
+
+// Page-number helper (1-based)
+var page = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .OrderBy(o => o.CreatedAt)
+    .WithPaging(page: 3, pageSize: 10)    // → LIMIT 10 OFFSET 20
+    .ToListAsync();
+
+// Null defaults: page defaults to 1, pageSize defaults to 10
+.WithPaging(null, 20)    // → LIMIT 20 OFFSET 0
+.WithPaging(2,    null)  // → LIMIT 10 OFFSET 10
+```
+
+#### Aggregate and Existence Checks
+
+```csharp
+// Count all matching rows
+long count = await _db.Query<Order>()
+    .Where(o => o.Status == OrderStatus.Pending)
+    .CountAsync();
+
+// Check if any row matches
+bool exists = await _db.Query<Order>()
+    .Where(o => o.Id == orderId)
+    .ExistsAsync();
+
+// CountAsync counts the full filtered set, independent of Limit / Offset
+long total = await _db.Query<Order>().Where(o => o.IsActive).CountAsync();
+```
+
+#### Combined Real-World Example
+
+```csharp
+// Page 2 of active high-value orders for a set of users, with total count
+var userIds = new List<Guid> { /* ... */ };
+
+var orders = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .Where(o => o.TotalAmount > 500m || o.Priority == Priority.High)
+    .Where(o => userIds.Contains(o.UserId))
+    .OrderByDescending(o => o.CreatedAt)
+    .ThenBy(o => o.OrderNumber)
+    .WithPaging(page: 2, pageSize: 25)
+    .ToListAsync();
+
+long totalCount = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .Where(o => o.TotalAmount > 500m || o.Priority == Priority.High)
+    .Where(o => userIds.Contains(o.UserId))
+    .CountAsync();
+```
+
+---
+
+### Raw SQL Queries
 
 ```csharp
 // Query with parameters
@@ -758,6 +1030,7 @@ var users = await _db.QueryAsync<User>(
     ORDER BY username
     """,
     new { Role = UserRole.Admin, StartDate = DateTime.UtcNow.AddDays(-30), IsActive = true });
+```
 
 // Query with LIKE
 var users = await _db.QueryAsync<User>(
@@ -1653,7 +1926,7 @@ WebVella.Database provides a simple yet powerful migration system for managing d
 - **Version ordering** - Migrations are executed in ascending version order
 - **Transactional execution** - Each migration runs in a transaction with automatic rollback on failure
 - **Detailed logging** - Each SQL statement is logged with success/failure status
-- **Post-migration hooks** - Execute custom .NET code after SQL migration
+- **Pre/Post-migration hooks** - Execute custom .NET code before and after SQL migration
 - **Embedded SQL support** - Load SQL from embedded resource files
 - **RLS bypass** - Migrations automatically run without RLS context for unrestricted schema access
 
@@ -1769,6 +2042,39 @@ CREATE INDEX idx_orders_number ON orders(order_number);
     <EmbeddedResource Include="Migrations\CreateOrdersTables.Script.sql" />
 </ItemGroup>
 ```
+
+### Pre-Migration Logic
+
+Use `PreMigrateAsync` to execute custom .NET code before migration SQL runs. It is called
+inside the migration transaction, so a failure here rolls back the entire migration.
+
+```csharp
+[DbMigration("1.0.3.0")]
+public class RebuildStatusIndex : DbMigration
+{
+    public override async Task PreMigrateAsync(IServiceProvider serviceProvider)
+    {
+        // Drop the old index before adding the new compound one — avoids duplicate index
+        // during the migration and is faster for large tables.
+        var db = serviceProvider.GetRequiredService<IDbService>();
+        await db.ExecuteAsync("DROP INDEX IF EXISTS idx_orders_status;");
+    }
+
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult("""
+            ALTER TABLE orders ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+            CREATE INDEX idx_orders_status_priority ON orders(status, priority);
+            """);
+    }
+}
+```
+
+Typical uses:
+- Drop an index or constraint before a bulk schema change
+- Disable triggers during a data transformation
+- Validate preconditions and throw to abort the migration early
+- Archive rows before a destructive change
 
 ### Post-Migration Logic
 
@@ -2053,8 +2359,9 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 
 | Method | Description |
 |--------|-------------|
-| `Query<T>` | Execute query and return collection |
-| `QueryAsync<T>` | Async version of Query |
+| `Query<T>()` | Create fluent expression-based query builder (`DbQuery<T>`) |
+| `Query<T>(sql, params)` | Execute raw SQL query and return collection |
+| `QueryAsync<T>(sql, params)` | Async version of raw SQL Query |
 | `QueryMultiple<T>` | Execute multi-result query into container |
 | `QueryMultipleAsync<T>` | Async version of QueryMultiple |
 | `QueryMultipleList<T>` | Execute multi-result query with parent-child mapping |
@@ -2098,6 +2405,32 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `CreateAdvisoryLockScope` | Create lock scope without transaction |
 | `CreateAdvisoryLockScopeAsync` | Async version |
 
+### DbQuery\<T\> Builder
+
+Obtained via `IDbService.Query<T>()`. Chain builder methods, then call a terminal method.
+
+#### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `.Where(predicate)` | Add WHERE predicate; multiple calls combined with `AND` |
+| `.OrderBy(prop)` | Add primary ascending `ORDER BY` |
+| `.OrderByDescending(prop)` | Add primary descending `ORDER BY` |
+| `.ThenBy(prop)` | Append secondary ascending sort |
+| `.ThenByDescending(prop)` | Append secondary descending sort |
+| `.Limit(n)` | Set `LIMIT` (n ≥ 0) |
+| `.Offset(n)` | Set `OFFSET` (n ≥ 0) |
+| `.WithPaging(page, pageSize)` | Set `LIMIT` / `OFFSET` from 1-based page number |
+
+#### Terminal Methods
+
+| Method | SQL | Returns |
+|--------|-----|---------|
+| `ToListAsync()` / `ToList()` | `SELECT * FROM ...` | `IEnumerable<T>` |
+| `FirstOrDefaultAsync()` / `FirstOrDefault()` | `SELECT ... LIMIT 1` | `T?` |
+| `CountAsync()` / `Count()` | `SELECT COUNT(*) FROM ...` | `long` |
+| `ExistsAsync()` / `Exists()` | `SELECT EXISTS(SELECT 1 ...)` | `bool` |
+
 ### IDbMigrationService Interface
 
 | Method | Description |
@@ -2126,6 +2459,30 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 ---
 
 ## Version History
+
+### v1.2.3
+- **Fluent Query Builder**: Added `IDbService.Query<T>()` returning `DbQuery<T>` — an
+  expression-tree-based query builder that generates parameterised PostgreSQL SQL without
+  writing SQL strings
+- **ILike Extension Methods**: Added `DbStringExtensions` with `ILikeContains`,
+  `ILikeStartsWith`, and `ILikeEndsWith` for case-insensitive `ILIKE` pattern matching inside
+  `.Where()` predicates
+- **PreMigrateAsync hook**: Added `DbMigration.PreMigrateAsync(IServiceProvider)` virtual
+  method — called inside the migration transaction before SQL execution; override to drop
+  indexes, disable triggers, or validate preconditions
+- **Breaking change**: `DbQuery<T>.Take(int)` renamed to `Limit(int)` to align with
+  PostgreSQL keyword
+- **Breaking change**: `DbQuery<T>.Skip(int)` renamed to `Offset(int)` to align with
+  PostgreSQL keyword
+
+Supported WHERE patterns: `==` `!=` `<` `<=` `>` `>=` · `&&` `||` `!` ·
+boolean shorthand · null checks · `.Contains()` `.StartsWith()` `.EndsWith()` (LIKE) ·
+`.ILikeContains()` `.ILikeStartsWith()` `.ILikeEndsWith()` (ILIKE) ·
+`.ToLower()` `.ToLowerInvariant()` `.ToUpper()` `.ToUpperInvariant()` (LOWER/UPPER) ·
+`list.Contains(e.Prop)` / `Enumerable.Contains(list, e.Prop)` (ANY) ·
+enum auto-cast to `int` · captured variables and closures
+
+---
 
 ### v1.2.2
 - Added `[DbColumn("name")]` attribute for specifying explicit database column names, overriding the default snake_case conversion

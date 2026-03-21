@@ -612,6 +612,31 @@ public interface IDbService
 
 	#endregion
 
+	#region <=== DbQuery ===>                                         
+
+	/// <summary>
+	/// Creates a new fluent, expression-based query builder for <typeparamref name="T"/>.
+	/// Chain <c>Where</c>, <c>OrderBy</c>, <c>Limit</c>, and <c>Offset</c>,
+	/// then call a terminal method to execute.
+	/// </summary>
+	/// <typeparam name="T">The entity type to query.</typeparam>
+	/// <returns>A <see cref="DbQuery{T}"/> for building the query.</returns>
+	/// <example>
+	/// <code>
+	/// var emails = await _db.Query&lt;Email&gt;()
+	///     .Where(e => e.Status == EmailStatus.Pending &amp;&amp; e.RetryCount &lt; 3)
+	///     .OrderByDescending(e => e.CreatedOn)
+	///     .Limit(50)
+	///     .ToListAsync();
+	///
+	/// long count  = await _db.Query&lt;Email&gt;().Where(e => e.IsActive).CountAsync();
+	/// bool exists = await _db.Query&lt;Email&gt;().Where(e => e.Id == id).ExistsAsync();
+	/// </code>
+	/// </example>
+	DbQuery<T> Query<T>() where T : class;
+
+	#endregion
+
 	#region <=== Connection & Transaction ===>
 
 	/// <summary>
@@ -727,7 +752,12 @@ public class DbService : IDbService
 		}
 	}
 
-	
+	#region <=== DbQuery ===>                                         
+
+	/// <inheritdoc/>
+	public DbQuery<T> Query<T>() where T : class => new DbQuery<T>(this);
+
+	#endregion
 
 	#region <=== Query ===>
 

@@ -24,6 +24,7 @@ GitHub stars guide developers toward great tools. If you find this project valua
 ## Features
 
 - **Dapper-based CRUD operations** - Simple Insert, Update, Delete, Get, and Query methods
+- **Fluent query builder** - Type-safe, expression-based queries with WHERE, ORDER BY, paging, COUNT, and EXISTS — no SQL strings needed
 - **Nested transaction support** - Create transaction scopes that properly handle nesting
 - **PostgreSQL advisory locks** - Easy-to-use advisory lock scopes for distributed locking
 - **Row Level Security (RLS)** - Built-in support for PostgreSQL RLS with automatic session context
@@ -199,10 +200,67 @@ public class UserService
 }
 ```
 
-### Custom Queries
+### Fluent Query Builder
+
+`Query<T>()` provides an expression-based builder that generates parameterised SQL without writing SQL strings. Chain `Where`, `OrderBy`, `Limit`, `Offset`, or `WithPaging`, then call a terminal method.
 
 ```csharp
-// Query with parameters
+// Filter, sort, and limit
+var pendingOrders = await _db.Query<Order>()
+    .Where(o => o.Status == OrderStatus.Pending && o.TotalAmount > 50m)
+    .OrderByDescending(o => o.CreatedAt)
+    .Limit(20)
+    .ToListAsync();
+
+// Multiple Where calls are combined with AND
+var results = await _db.Query<User>()
+    .Where(u => u.IsActive)
+    .Where(u => u.Email != null)
+    .ToListAsync();
+
+// String matching — LIKE (case-sensitive) and ILIKE (case-insensitive)
+var byPrefix   = await _db.Query<User>().Where(u => u.Name.StartsWith("John")).ToListAsync();
+var caseSearch = await _db.Query<User>().Where(u => u.Name.ILikeContains("admin")).ToListAsync();
+
+// Collection membership → id = ANY(@p)
+var selected = await _db.Query<Order>()
+    .Where(o => orderIds.Contains(o.Id))
+    .ToListAsync();
+
+// Page-number pagination
+var page = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .OrderBy(o => o.CreatedAt)
+    .WithPaging(page: 2, pageSize: 25)
+    .ToListAsync();
+
+// Aggregate and existence checks
+long count  = await _db.Query<Order>().Where(o => o.IsActive).CountAsync();
+bool exists = await _db.Query<Order>().Where(o => o.Id == id).ExistsAsync();
+
+// First matching row or null
+var user = await _db.Query<User>()
+    .Where(u => u.Email == email)
+    .FirstOrDefaultAsync();
+```
+
+**Supported WHERE patterns:**
+- Equality / comparison: `e.Price > 10`, `e.Name != null`, `e.Status == Status.Active`
+- Logical operators: `&&`, `||`, `!`
+- Boolean shorthand: `e.IsActive`, `!e.IsActive`
+- Null checks: `e.Description == null` → `IS NULL`
+- String: `.Contains()`, `.StartsWith()`, `.EndsWith()` → `LIKE`
+- Case-insensitive: `.ILikeContains()`, `.ILikeStartsWith()`, `.ILikeEndsWith()` → `ILIKE`
+- Case-folding: `e.Name.ToLower() == "x"` → `LOWER(name) = @p`
+- Collection: `list.Contains(e.Id)` → `id = ANY(@p)`
+- Enum values are automatically mapped to their underlying `int`
+
+### Custom SQL and Commands
+
+For advanced queries or bulk operations that require raw SQL:
+
+```csharp
+// Query with raw SQL and parameters
 var activeUsers = await _db.QueryAsync<User>(
     "SELECT * FROM users WHERE is_active = @IsActive",
     new { IsActive = true });
@@ -317,6 +375,28 @@ For larger migrations, use embedded SQL resource files:
 [DbMigration("1.0.1.0")]
 public class AddUserProfile : DbMigration { }
 // Requires: AddUserProfile.Script.sql as embedded resource in same namespace
+```
+
+### Pre-Migration Logic
+
+Execute custom code before migration SQL runs:
+
+```csharp
+[DbMigration("1.0.2.0")]
+public class RebuildStatusIndex : DbMigration
+{
+    public override async Task PreMigrateAsync(IServiceProvider serviceProvider)
+    {
+        var db = serviceProvider.GetRequiredService<IDbService>();
+        await db.ExecuteAsync("DROP INDEX IF EXISTS idx_orders_status;");
+    }
+
+    public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
+    {
+        return Task.FromResult(
+            "CREATE INDEX idx_orders_status_priority ON orders(status, priority);");
+    }
+}
 ```
 
 ### Post-Migration Logic

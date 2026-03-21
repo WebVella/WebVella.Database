@@ -119,10 +119,57 @@ await _db.UpdateAsync(inventory);
 await scope.CompleteAsync();
 ```
 
-## Custom Queries
+## Fluent Query Builder
 
 ```csharp
-// Query with parameters
+// Filter, sort, limit
+var orders = await _db.Query<Order>()
+    .Where(o => o.Status == OrderStatus.Pending && o.TotalAmount > 50m)
+    .OrderByDescending(o => o.CreatedAt)
+    .Limit(20)
+    .ToListAsync();
+
+// Multiple Where calls combined with AND
+var results = await _db.Query<User>()
+    .Where(u => u.IsActive)
+    .Where(u => u.Email != null)
+    .ToListAsync();
+
+// String matching
+var byPrefix   = await _db.Query<User>().Where(u => u.Name.StartsWith("John")).ToListAsync();
+var caseSearch = await _db.Query<User>().Where(u => u.Name.ILikeContains("admin")).ToListAsync();
+var folded     = await _db.Query<User>().Where(u => u.Email.ToLower() == "alice@example.com")
+                                        .ToListAsync();
+
+// Collection membership
+var selected = await _db.Query<Order>().Where(o => ids.Contains(o.Id)).ToListAsync();
+
+// Page-number pagination
+var page = await _db.Query<Order>()
+    .Where(o => o.IsActive)
+    .OrderBy(o => o.CreatedAt)
+    .WithPaging(page: 2, pageSize: 25)
+    .ToListAsync();
+
+// Aggregates
+long count  = await _db.Query<Order>().Where(o => o.IsActive).CountAsync();
+bool exists = await _db.Query<Order>().Where(o => o.Id == id).ExistsAsync();
+var  first  = await _db.Query<User>().Where(u => u.Email == email).FirstOrDefaultAsync();
+```
+
+**Supported WHERE patterns:** `==` `!=` `<` `<=` `>` `>=` · `&&` `||` `!` ·
+boolean shorthand · null checks · `.Contains()` `.StartsWith()` `.EndsWith()` (LIKE) ·
+`.ILikeContains()` `.ILikeStartsWith()` `.ILikeEndsWith()` (ILIKE) ·
+`.ToLower()` `.ToUpper()` (LOWER/UPPER) · `list.Contains(e.Prop)` (ANY) ·
+enum auto-cast to int · captured variables
+
+**Not supported:** arithmetic (`+`,`-`,`*`), `.Trim()`, `.Replace()`, `Math.*`,
+`string.IsNullOrEmpty()`, nested properties (`e.Address.City`), ternary, indexers.
+
+## Raw SQL and Commands
+
+```csharp
+// Query with raw SQL
 var activeUsers = await _db.QueryAsync<User>(
     "SELECT * FROM users WHERE is_active = @IsActive",
     new { IsActive = true });
@@ -140,6 +187,7 @@ var userCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users");
 
 | Feature | Description |
 |---------|-------------|
+| **Fluent Query Builder** | Type-safe `Query<T>()` with WHERE, ORDER BY, LIMIT, OFFSET, COUNT, EXISTS |
 | **Nested Transactions** | Automatic PostgreSQL savepoint management |
 | **Advisory Locks** | Distributed coordination with simple scopes |
 | **Row Level Security** | Automatic session context for multi-tenancy |

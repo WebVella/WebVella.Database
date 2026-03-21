@@ -1,5 +1,40 @@
 # WebVella.Database Changelog
 
+## [1.2.3] - 2026-03-21
+
+### ✨ New Features
+- **Fluent Query Builder**: Added `IDbService.Query<T>()` returning `DbQuery<T>` — an
+  expression-tree-based query builder that generates parameterised PostgreSQL SQL without
+  writing SQL strings. Supports `Where`, `OrderBy`, `OrderByDescending`, `ThenBy`,
+  `ThenByDescending`, `Limit`, `Offset`, and `WithPaging` builder methods, plus async and
+  sync terminal methods: `ToListAsync` / `ToList`, `FirstOrDefaultAsync` / `FirstOrDefault`,
+  `CountAsync` / `Count`, `ExistsAsync` / `Exists`
+- **ILike Extension Methods**: Added `DbStringExtensions` with `ILikeContains`,
+  `ILikeStartsWith`, and `ILikeEndsWith` — marker methods for use inside `.Where()` predicates
+  that translate to PostgreSQL `ILIKE` for case-insensitive pattern matching
+- **PreMigrateAsync hook**: Added `DbMigration.PreMigrateAsync(IServiceProvider)` virtual
+  method — called inside the migration transaction before `GenerateSqlAsync` SQL is executed;
+  override to drop indexes, disable triggers, or validate preconditions before schema changes
+- **DbMigrationAttribute ScriptPath**: Added optional `scriptPath` constructor parameter to
+  `[DbMigration]` — when set, `GenerateSqlAsync` loads SQL exclusively from the named embedded
+  resource (case-insensitive full-name or suffix match), bypassing automatic
+  `{TypeName}.Script.sql/.psql` discovery; throws `DbMigrationException` if the resource
+  cannot be found in the assembly
+
+### Supported WHERE Patterns
+`==` `!=` `<` `<=` `>` `>=` · `&&` `||` `!` · boolean shorthand · null checks ·
+`.Contains()` `.StartsWith()` `.EndsWith()` (LIKE) ·
+`.ILikeContains()` `.ILikeStartsWith()` `.ILikeEndsWith()` (ILIKE) ·
+`.ToLower()` `.ToLowerInvariant()` `.ToUpper()` `.ToUpperInvariant()` (LOWER/UPPER) ·
+`list.Contains(e.Prop)` / `Enumerable.Contains(list, e.Prop)` (ANY) ·
+enum auto-cast to `int` · captured variables and closures
+
+### Breaking Changes
+- `DbQuery<T>.Take(int)` renamed to `Limit(int)` to match PostgreSQL keyword
+- `DbQuery<T>.Skip(int)` renamed to `Offset(int)` to match PostgreSQL keyword
+
+---
+
 ## [1.2.2] - 2026-03-20
 
 ### ✨ New Features

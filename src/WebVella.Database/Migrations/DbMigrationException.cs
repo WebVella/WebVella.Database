@@ -29,4 +29,16 @@ public class DbMigrationException : Exception
 	{
 		MigrationLogs = logs;
 	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="DbMigrationException"/> class
+	/// wrapping an unexpected exception that occurred outside SQL execution.
+	/// </summary>
+	/// <param name="message">The error message describing the failure.</param>
+	/// <param name="innerException">The unexpected exception that caused the failure.</param>
+	public DbMigrationException(string message, Exception innerException)
+		: base(message, innerException)
+	{
+		MigrationLogs = [];
+	}
 }

@@ -17,8 +17,16 @@
 ///   </item>
 ///   <item>
 ///     <description>
-///       Create an embedded resource file named <c>{FullTypeName}.Script.sql</c> in the same assembly.
-///       The base implementation will automatically load and return the SQL from this file.
+///       Create an embedded resource file in the same assembly. The base implementation searches
+///       for a matching resource using the following priority (all case-insensitive):
+///       <list type="number">
+///         <item><description><c>{TypeName}.Script.psql</c></description></item>
+///         <item><description><c>{TypeName}.Script.sql</c></description></item>
+///         <item><description><c>{FullTypeName}.Script.psql</c></description></item>
+///         <item><description><c>{FullTypeName}.Script.sql</c></description></item>
+///       </list>
+///       Alternatively, set <see cref="DbMigrationAttribute.ScriptPath"/> to explicitly specify
+///       the embedded resource name, bypassing automatic discovery entirely.
 ///     </description>
 ///   </item>
 /// </list>
@@ -36,10 +44,14 @@
 ///     }
 /// }
 /// 
-/// // Method 2: Use embedded SQL resource (no override needed)
+/// // Method 2: Automatic embedded resource discovery (no override needed)
 /// [DbMigration("1.0.1.0")]
 /// public class Migration_1_0_1_0 : DbMigration { }
-/// // Requires: Migration_1_0_1_0.Script.sql as embedded resource
+/// // Requires: Migration_1_0_1_0.Script.psql or Migration_1_0_1_0.Script.sql as embedded resource
+/// 
+/// // Method 3: Explicit embedded resource path
+/// [DbMigration("1.0.2.0", "MyApp.Migrations.Shared.CommonSetup.Script.psql")]
+/// public class Migration_1_0_2_0 : DbMigration { }
 /// </code>
 /// </example>
 public abstract class DbMigration
@@ -56,8 +68,19 @@ public abstract class DbMigration
 	/// </returns>
 	/// <remarks>
 	/// <para>
-	/// The default implementation loads SQL from an embedded resource file named
-	/// <c>{FullTypeName}.Script.sql</c>. Override this method to provide SQL dynamically.
+	/// If <see cref="DbMigrationAttribute.ScriptPath"/> is set on the migration class, only that
+	/// specific embedded resource is used (case-insensitive lookup). A <see cref="DbMigrationException"/>
+	/// is thrown immediately if the specified resource cannot be found.
+	/// </para>
+	/// <para>
+	/// When no <see cref="DbMigrationAttribute.ScriptPath"/> is set, the following resource name
+	/// patterns are tried in order (all case-insensitive). Returns an empty string if none match:
+	/// <list type="number">
+	///   <item><description>Resource ending with <c>{TypeName}.Script.psql</c></description></item>
+	///   <item><description>Resource ending with <c>{TypeName}.Script.sql</c></description></item>
+	///   <item><description>Resource ending with <c>{FullTypeName}.Script.psql</c></description></item>
+	///   <item><description>Resource ending with <c>{FullTypeName}.Script.sql</c></description></item>
+	/// </list>
 	/// </para>
 	/// <para>
 	/// SQL statements are executed within a transaction. If any statement fails, the entire
@@ -68,17 +91,75 @@ public abstract class DbMigration
 	{
 		var type = this.GetType();
 		var assembly = type.Assembly;
+		var allResources = assembly.GetManifestResourceNames();
 
-		var resourceName = $"{type.FullName}.Script.sql";
+		var attr = type.GetCustomAttributes(typeof(DbMigrationAttribute), inherit: false)
+			.OfType<DbMigrationAttribute>()
+			.FirstOrDefault();
+
+		if (!string.IsNullOrWhiteSpace(attr?.ScriptPath))
+		{
+			var explicitResource =
+				allResources.FirstOrDefault(r => r.Equals(attr.ScriptPath, StringComparison.OrdinalIgnoreCase))
+				?? allResources.FirstOrDefault(r => r.EndsWith(attr.ScriptPath, StringComparison.OrdinalIgnoreCase));
+
+			if (explicitResource is null)
+				throw new DbMigrationException(
+					$"Embedded resource script '{attr.ScriptPath}' specified on migration " +
+					$"'{type.FullName}' was not found in assembly '{assembly.GetName().Name}'.",
+					[]);
+
+			using var explicitStream = assembly.GetManifestResourceStream(explicitResource)!;
+			using var explicitReader = new StreamReader(explicitStream);
+			return await explicitReader.ReadToEndAsync();
+		}
+
+		var resourceName =
+			allResources.FirstOrDefault(r => r.EndsWith($"{type.Name}.Script.psql", StringComparison.OrdinalIgnoreCase))
+			?? allResources.FirstOrDefault(r => r.EndsWith($"{type.Name}.Script.sql", StringComparison.OrdinalIgnoreCase))
+			?? allResources.FirstOrDefault(r => r.EndsWith($"{type.FullName}.Script.psql", StringComparison.OrdinalIgnoreCase))
+			?? allResources.FirstOrDefault(r => r.EndsWith($"{type.FullName}.Script.sql", StringComparison.OrdinalIgnoreCase));
+
+		if (resourceName is null)
+			return string.Empty;
 
 		using var stream = assembly.GetManifestResourceStream(resourceName);
-		if (stream == null)
-		{
+		if (stream is null)
 			return string.Empty;
-		}
 
 		using var reader = new StreamReader(stream);
 		return await reader.ReadToEndAsync();
+	}
+
+	/// <summary>
+	/// Executes custom logic before the migration SQL is applied.
+	/// </summary>
+	/// <param name="serviceProvider">
+	/// The service provider for resolving dependencies during pre-migration processing.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation.</returns>
+	/// <remarks>
+	/// <para>
+	/// This method is called before <see cref="GenerateSqlAsync"/> SQL is executed, inside the
+	/// migration transaction. Use this for preparatory steps such as disabling triggers,
+	/// dropping indexes before bulk operations, or validating preconditions.
+	/// </para>
+	/// <para>
+	/// The default implementation does nothing. Override to add custom pre-migration logic.
+	/// </para>
+	/// </remarks>
+	/// <example>
+	/// <code>
+	/// public override async Task PreMigrateAsync(IServiceProvider serviceProvider)
+	/// {
+	///     var db = serviceProvider.GetRequiredService&lt;IDbService&gt;();
+	///     await db.ExecuteAsync("ALTER TABLE orders DISABLE TRIGGER ALL");
+	/// }
+	/// </code>
+	/// </example>
+	public virtual Task PreMigrateAsync(IServiceProvider serviceProvider)
+	{
+		return Task.CompletedTask;
 	}
 
 	/// <summary>

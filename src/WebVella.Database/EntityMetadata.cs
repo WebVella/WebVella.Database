@@ -95,6 +95,13 @@ internal sealed class EntityMetadata
 	public IReadOnlyDictionary<string, string> KeyPropertyColumnNames { get; }
 
 	/// <summary>
+	/// Gets a dictionary mapping all selectable property names (case-insensitive) to their
+	/// database column names. Includes key and non-key properties; excludes [External]
+	/// and [Write(false)] properties.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> PropertyColumnNames { get; }
+
+	/// <summary>
 	/// Gets a value indicating whether the entity is cacheable.
 	/// </summary>
 	public bool IsCacheable { get; }
@@ -138,6 +145,9 @@ internal sealed class EntityMetadata
 		KeyPropertyColumnNames = keyProperties
 			.ToDictionary(p => p.Name, p => GetColumnName(p));
 
+		PropertyColumnNames = allProperties
+			.ToDictionary(p => p.Name, p => GetColumnName(p), StringComparer.OrdinalIgnoreCase);
+
 		SelectColumns = string.Join(
 			", ",
 			allProperties.Select(p => $"{GetColumnName(p)} AS \"{p.Name}\""));
@@ -170,7 +180,22 @@ internal sealed class EntityMetadata
 		return string.Join(", ", properties.Select(p => $"{GetColumnName(p)} = @{p.Name}"));
 	}
 
-	private static string GetColumnName(PropertyInfo property)
+	/// <summary>
+	/// Returns the database column name for the specified property name.
+	/// Throws <see cref="ArgumentException"/> if the property is not found.
+	/// </summary>
+	/// <param name="propertyName">The C# property name (case-insensitive).</param>
+	internal string GetColumnName(string propertyName)
+	{
+		if (PropertyColumnNames.TryGetValue(propertyName, out var col))
+			return col;
+		throw new ArgumentException(
+			$"Property '{propertyName}' was not found on '{GetType().Name}' " +
+			"or is excluded from database queries ([External] / [Write(false)]).",
+			nameof(propertyName));
+	}
+
+	internal static string GetColumnName(PropertyInfo property)
 	{
 		var dbColumnAttr = property.GetCustomAttribute<DbColumnAttribute>();
 		return dbColumnAttr?.Name ?? ToSnakeCase(property.Name);
