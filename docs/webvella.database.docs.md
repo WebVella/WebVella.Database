@@ -14,7 +14,12 @@ A lightweight, high-performance Postgres data access library built on Dapper. Th
    - [Raw SQL Queries](#raw-sql-queries)
 7. [Execute Methods](#execute-methods)
 8. [Multi-Query Methods](#multi-query-methods)
+   - [QueryMultiple (Container Class)](#querymultiple-container-class)
+   - [QueryMultipleList (Parent-Child Mapping)](#querymultiplelist-parent-child-mapping)
+   - [QueryMultipleList Fluent Builder](#querymultiplelist-fluent-builder)
 9. [QueryWithJoin Methods](#querywith-join-methods)
+   - [QueryWithJoin Fluent Builder](#querywith-join-fluent-builder)
+   - [QueryMultipleList vs QueryWithJoin](#querymultiplelist-vs-querywith-join)
 10. [Transaction Management](#transaction-management)
 11. [Advisory Locks](#advisory-locks)
 12. [Caching](#caching)
@@ -1378,6 +1383,74 @@ public List<OrderLine> Lines { get; set; } = [];
 public List<OrderLine> Lines { get; set; } = [];
 ```
 
+### QueryMultipleList Fluent Builder
+
+`QueryMultipleList<T>()` returns a `DbMultiQueryList<T>` that can auto-generate
+multi-SELECT SQL from entity metadata — no SQL strings needed. The builder reads
+`[Table]`, `[Key]`, `[ResultSet(ForeignKey)]`, and column mappings to produce the
+parent SELECT plus one child SELECT per `[ResultSet]` property.
+
+Child SELECTs are automatically filtered with a `WHERE fk IN (SELECT pk FROM parent ...)`
+subquery that mirrors the parent's WHERE / ORDER BY / LIMIT / OFFSET conditions.
+
+#### SQL-Free Usage (Recommended)
+
+```csharp
+// Simplest form — returns all parents with all children mapped
+var orders = await _db.QueryMultipleList<Order>().ToListAsync();
+
+// With WHERE — children are automatically filtered to match
+var orders = await _db.QueryMultipleList<Order>()
+    .Where(o => o.Status == OrderStatus.Active)
+    .Where(o => o.TotalAmount > 100m)
+    .OrderByDescending(o => o.CreatedOn)
+    .Limit(50)
+    .ToListAsync();
+
+// With pagination
+var page3 = await _db.QueryMultipleList<Order>()
+    .Where(o => o.UserId == userId)
+    .OrderBy(o => o.CreatedOn)
+    .WithPaging(page: 3, pageSize: 25)
+    .ToListAsync();
+
+// Sync version
+var orders = _db.QueryMultipleList<Order>()
+    .Where(o => o.IsActive)
+    .ToList();
+```
+
+#### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `.Sql(sql)` | Use raw SQL instead of auto-generation |
+| `.Parameters(obj)` | Parameters for raw SQL mode |
+| `.Where(predicate)` | Add WHERE predicate; multiple calls combined with `AND` |
+| `.OrderBy(prop)` | Primary ascending `ORDER BY` |
+| `.OrderByDescending(prop)` | Primary descending `ORDER BY` |
+| `.ThenBy(prop)` | Secondary ascending sort |
+| `.ThenByDescending(prop)` | Secondary descending sort |
+| `.Limit(n)` | Maximum parent rows (`LIMIT n`) |
+| `.Offset(n)` | Skip parent rows (`OFFSET n`) |
+| `.WithPaging(page, pageSize)` | 1-based page-number pagination |
+
+#### Terminal Methods
+
+| Method | Returns |
+|--------|---------|
+| `ToListAsync()` | `Task<List<T>>` — parents with children populated |
+| `ToList()` | `List<T>` — sync version |
+
+> **Note:** `.Sql()` and expression-based methods (`.Where()`, `.OrderBy()`, etc.) are
+> independent modes. When `.Sql()` is set, the raw SQL is used as-is and expression
+> methods are ignored.
+
+The same [WHERE patterns](#supported-where-patterns) supported by `DbQuery<T>` are
+available here: equality, comparisons, boolean shorthand, null checks, logical operators,
+string methods, ILIKE, LOWER/UPPER, collection membership (ANY), enum auto-cast, and
+captured variables.
+
 ---
 
 ## QueryWithJoin Methods
@@ -1459,16 +1532,136 @@ var orders = _db.QueryWithJoin<Order, OrderLine, OrderNote>(
     splitOn: "Id,Id");
 ```
 
+### QueryWithJoin Fluent Builder
+
+`QueryWithJoin<TParent, TChild>()` and `QueryWithJoin<TParent, TChild1, TChild2>()`
+return fluent builders that can auto-generate JOIN SQL from entity metadata. The builder
+discovers the foreign key relationship from the `[ResultSet(ForeignKey)]` attribute on
+the parent's collection property and builds the `LEFT JOIN` clause automatically.
+
+In SQL-free mode, `ParentKey()`, `ChildKey()`, `SplitOn()`, and even `ChildSelector()`
+are auto-derived from metadata — you only need to call the expression methods you want.
+
+#### SQL-Free — Single Child Collection
+
+```csharp
+// Minimal — everything auto-derived from [ResultSet] metadata
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .ToListAsync();
+
+// With explicit child selector and filtering
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .ChildSelector(o => o.Lines)
+    .Where(o => o.Status == OrderStatus.Active)
+    .OrderByDescending(o => o.CreatedOn)
+    .Limit(50)
+    .ToListAsync();
+
+// Sync version
+var orders = _db.QueryWithJoin<Order, OrderLine>()
+    .Where(o => o.UserId == userId)
+    .ToList();
+```
+
+#### SQL-Free — Two Child Collections
+
+```csharp
+// Minimal — auto-derived
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .Where(o => o.Status == OrderStatus.Active)
+    .OrderBy(o => o.CreatedOn)
+    .ToListAsync();
+
+// With explicit child selectors
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .ChildSelector1(o => o.Lines)
+    .ChildSelector2(o => o.Notes)
+    .Where(o => o.TotalAmount > 100m)
+    .ToListAsync();
+```
+
+#### Raw SQL Mode
+
+When `.Sql()` is called, the builder uses raw SQL and requires explicit configuration
+of `ChildSelector`, `ParentKey`, `ChildKey`, and `SplitOn` — the same as calling the
+direct `QueryWithJoin` / `QueryWithJoinAsync` methods.
+
+```csharp
+// Raw SQL — single child
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .Sql("""
+        SELECT o.*, l.*
+        FROM orders o
+        LEFT JOIN order_lines l ON l.order_id = o.id
+        WHERE o.user_id = @UserId
+        """)
+    .ChildSelector(o => o.Lines)
+    .ParentKey(o => o.Id)
+    .ChildKey(l => l.Id)
+    .SplitOn("Id")
+    .Parameters(new { UserId = userId })
+    .ToListAsync();
+
+// Raw SQL — two children
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .Sql("""
+        SELECT o.*, l.*, n.*
+        FROM orders o
+        LEFT JOIN order_lines l ON l.order_id = o.id
+        LEFT JOIN order_notes n ON n.order_id = o.id
+        """)
+    .ChildSelector1(o => o.Lines)
+    .ChildSelector2(o => o.Notes)
+    .ParentKey(o => o.Id)
+    .ChildKey1(l => l.Id)
+    .ChildKey2(n => n.Id)
+    .SplitOn("Id,Id")
+    .ToListAsync();
+```
+
+#### Builder Methods — Single Child (`DbJoinQuery<TParent, TChild>`)
+
+| Method | Description |
+|--------|-------------|
+| `.Sql(sql)` | Use raw SQL instead of auto-generation |
+| `.ChildSelector(expr)` | Set child collection property; auto-derived if omitted |
+| `.ParentKey(expr)` | Set parent key selector; auto-derived in SQL-free mode |
+| `.ChildKey(expr)` | Set child key selector; auto-derived in SQL-free mode |
+| `.SplitOn(col)` | Set split column; auto-derived in SQL-free mode |
+| `.Parameters(obj)` | Parameters for raw SQL mode |
+| `.Where(predicate)` | Add WHERE predicate on parent; SQL-free mode only |
+| `.OrderBy(prop)` | Primary ascending `ORDER BY` |
+| `.OrderByDescending(prop)` | Primary descending `ORDER BY` |
+| `.ThenBy(prop)` / `.ThenByDescending(prop)` | Secondary sort |
+| `.Limit(n)` / `.Offset(n)` | Pagination |
+| `.WithPaging(page, pageSize)` | 1-based page-number pagination |
+
+#### Builder Methods — Two Children (`DbJoinQuery<TParent, TChild1, TChild2>`)
+
+Same as above, with `ChildSelector1` / `ChildSelector2`, `ChildKey1` / `ChildKey2`.
+
+#### Terminal Methods
+
+| Method | Returns |
+|--------|---------|
+| `ToListAsync()` | `Task<List<TParent>>` — parents with children populated |
+| `ToList()` | `List<TParent>` — sync version |
+
 ### QueryMultipleList vs QueryWithJoin
 
 | Feature | QueryMultipleList | QueryWithJoin |
 |---------|-------------------|---------------|
 | SQL Queries | Multiple SELECT statements | Single SELECT with JOINs |
+| SQL-Free Mode | ✅ Auto-generates from metadata | ✅ Auto-generates from metadata |
 | Database Roundtrips | 1 (sends all queries together) | 1 |
-| Configuration | Attribute-based ([ResultSet]) | Lambda-based (selectors) |
+| Configuration | Attribute-based ([ResultSet]) | Lambda-based or auto-derived |
 | Deduplication | Automatic (FK-based) | Automatic (PK-based) |
 | Max Children | Unlimited (based on result sets) | 2 (current implementation) |
-| Best For | Known entity structures | Ad-hoc queries |
+| Expression Filters | `.Where()`, `.OrderBy()`, etc. | `.Where()`, `.OrderBy()`, etc. |
+| Best For | Known entity structures | Ad-hoc queries, simple JOINs |
 
 ---
 
@@ -2360,16 +2553,20 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | Method | Description |
 |--------|-------------|
 | `Query<T>()` | Create fluent expression-based query builder (`DbQuery<T>`) |
+| `QueryWithJoin<TParent, TChild>()` | Create fluent JOIN query builder (`DbJoinQuery`) — SQL-free or raw SQL |
+| `QueryWithJoin<TParent, TChild1, TChild2>()` | Create fluent JOIN query builder with two children |
+| `QueryMultiple<T>()` | Create fluent multi-result query builder (`DbMultiQuery<T>`) |
+| `QueryMultipleList<T>()` | Create fluent parent-child multi-query builder (`DbMultiQueryList<T>`) — SQL-free or raw SQL |
 | `Query<T>(sql, params)` | Execute raw SQL query and return collection |
 | `QueryAsync<T>(sql, params)` | Async version of raw SQL Query |
-| `QueryMultiple<T>` | Execute multi-result query into container |
-| `QueryMultipleAsync<T>` | Async version of QueryMultiple |
-| `QueryMultipleList<T>` | Execute multi-result query with parent-child mapping |
-| `QueryMultipleListAsync<T>` | Async version of QueryMultipleList |
-| `QueryWithJoin<TParent, TChild>` | Execute JOIN query with single child collection |
-| `QueryWithJoinAsync<TParent, TChild>` | Async version with single child |
-| `QueryWithJoin<TParent, TChild1, TChild2>` | Execute JOIN query with two child collections |
-| `QueryWithJoinAsync<TParent, TChild1, TChild2>` | Async version with two children |
+| `QueryMultiple<T>(sql, params)` | Execute multi-result query into container (raw SQL) |
+| `QueryMultipleAsync<T>(sql, params)` | Async version of QueryMultiple |
+| `QueryMultipleList<T>(sql, params)` | Execute multi-result query with parent-child mapping (raw SQL) |
+| `QueryMultipleListAsync<T>(sql, params)` | Async version of QueryMultipleList |
+| `QueryWithJoin<P, C>(sql, ...)` | Execute JOIN query with single child collection (raw SQL) |
+| `QueryWithJoinAsync<P, C>(sql, ...)` | Async version with single child |
+| `QueryWithJoin<P, C1, C2>(sql, ...)` | Execute JOIN query with two child collections (raw SQL) |
+| `QueryWithJoinAsync<P, C1, C2>(sql, ...)` | Async version with two children |
 | `Execute` | Execute command, return affected rows |
 | `ExecuteAsync` | Async version of Execute |
 | `ExecuteReader` | Execute query and return IDataReader |
@@ -2431,6 +2628,66 @@ Obtained via `IDbService.Query<T>()`. Chain builder methods, then call a termina
 | `CountAsync()` / `Count()` | `SELECT COUNT(*) FROM ...` | `long` |
 | `ExistsAsync()` / `Exists()` | `SELECT EXISTS(SELECT 1 ...)` | `bool` |
 
+### DbMultiQueryList\<T\> Builder
+
+Obtained via `IDbService.QueryMultipleList<T>()`. Supports SQL-free and raw SQL modes.
+
+#### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `.Sql(sql)` | Use raw SQL (disables auto-generation) |
+| `.Parameters(obj)` | Parameters for raw SQL mode |
+| `.Where(predicate)` | Add WHERE predicate; multiple calls combined with `AND` |
+| `.OrderBy(prop)` | Primary ascending `ORDER BY` |
+| `.OrderByDescending(prop)` | Primary descending `ORDER BY` |
+| `.ThenBy(prop)` / `.ThenByDescending(prop)` | Secondary sort |
+| `.Limit(n)` | Set `LIMIT` (n ≥ 0) |
+| `.Offset(n)` | Set `OFFSET` (n ≥ 0) |
+| `.WithPaging(page, pageSize)` | 1-based page-number pagination |
+
+#### Terminal Methods
+
+| Method | Returns |
+|--------|---------|
+| `ToListAsync()` | `Task<List<T>>` — parents with children populated |
+| `ToList()` | `List<T>` — sync version |
+
+### DbJoinQuery\<TParent, TChild\> Builder
+
+Obtained via `IDbService.QueryWithJoin<TParent, TChild>()`. Supports SQL-free and raw
+SQL modes.
+
+#### Builder Methods
+
+| Method | SQL-Free | Raw SQL | Description |
+|--------|----------|---------|-------------|
+| `.Sql(sql)` | — | Required | Use raw SQL |
+| `.ChildSelector(expr)` | Auto-derived | Required | Child collection property |
+| `.ParentKey(expr)` | Auto-derived | Required | Parent key selector |
+| `.ChildKey(expr)` | Auto-derived | Required | Child key selector |
+| `.SplitOn(col)` | Auto-derived | Optional | Column to split on |
+| `.Parameters(obj)` | — | Optional | Raw SQL parameters |
+| `.Where(predicate)` | ✅ | — | WHERE on parent |
+| `.OrderBy(prop)` | ✅ | — | ORDER BY |
+| `.OrderByDescending(prop)` | ✅ | — | ORDER BY DESC |
+| `.ThenBy(prop)` / `.ThenByDescending(prop)` | ✅ | — | Secondary sort |
+| `.Limit(n)` / `.Offset(n)` | ✅ | — | Pagination |
+| `.WithPaging(page, pageSize)` | ✅ | — | 1-based pagination |
+
+#### Terminal Methods
+
+| Method | Returns |
+|--------|---------|
+| `ToListAsync()` | `Task<List<TParent>>` — parents with children populated |
+| `ToList()` | `List<TParent>` — sync version |
+
+### DbJoinQuery\<TParent, TChild1, TChild2\> Builder
+
+Obtained via `IDbService.QueryWithJoin<TParent, TChild1, TChild2>()`. Same methods
+as the single-child builder, with `ChildSelector1`/`ChildSelector2` and
+`ChildKey1`/`ChildKey2`.
+
 ### IDbMigrationService Interface
 
 | Method | Description |
@@ -2459,6 +2716,24 @@ Obtained via `IDbService.Query<T>()`. Chain builder methods, then call a termina
 ---
 
 ## Version History
+
+### v1.2.4
+- **SQL-Free Fluent Builders for QueryMultipleList and QueryWithJoin**: Added expression-based
+  query building to `DbMultiQueryList<T>` and `DbJoinQuery` — auto-generates SQL from entity
+  metadata (`[Table]`, `[Key]`, `[ResultSet(ForeignKey)]`) without writing SQL strings
+- **DbMultiQueryList\<T\> Builder**: New `.Where()`, `.OrderBy()`, `.OrderByDescending()`,
+  `.ThenBy()`, `.ThenByDescending()`, `.Limit()`, `.Offset()`, `.WithPaging()` methods;
+  child SELECTs are automatically filtered with `WHERE fk IN (SELECT pk FROM parent ...)`
+  subqueries that mirror parent conditions
+- **DbJoinQuery Builder**: New expression-based methods for single-child and two-child
+  JOIN queries; `ChildSelector`, `ParentKey`, `ChildKey`, and `SplitOn` are auto-derived
+  from `[ResultSet]` metadata in SQL-free mode
+- **Table Alias Support**: `DbExpressionTranslator` now supports optional table alias
+  prefixing for JOIN WHERE clauses (e.g., `p.customer_name = @p0`)
+- **EntityMetadata.GetAliasedSelectColumns**: New internal method that generates aliased
+  SELECT columns (e.g., `p.column_name AS "PropertyName"`) for JOIN SQL generation
+
+---
 
 ### v1.2.3
 - **Fluent Query Builder**: Added `IDbService.Query<T>()` returning `DbQuery<T>` — an

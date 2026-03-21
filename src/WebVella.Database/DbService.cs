@@ -637,6 +637,121 @@ public interface IDbService
 
 	#endregion
 
+	#region <=== DbJoinQuery ===>
+
+	/// <summary>
+	/// Creates a new fluent query builder for a JOIN query with a single child
+	/// collection. Chain <c>Sql</c>, <c>ChildSelector</c>, <c>ParentKey</c>,
+	/// <c>ChildKey</c>, and optionally <c>SplitOn</c> / <c>Parameters</c>,
+	/// then call a terminal method to execute.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild">The child entity type.</typeparam>
+	/// <returns>
+	/// A <see cref="DbJoinQuery{TParent, TChild}"/> for building the query.
+	/// </returns>
+	/// <example>
+	/// <code>
+	/// var orders = await _db.QueryWithJoin&lt;Order, OrderItem&gt;()
+	///     .Sql("SELECT o.*, oi.* FROM orders o " +
+	///          "LEFT JOIN order_items oi ON o.id = oi.order_id")
+	///     .ChildSelector(o => o.Items)
+	///     .ParentKey(o => o.Id)
+	///     .ChildKey(oi => oi.Id)
+	///     .ToListAsync();
+	/// </code>
+	/// </example>
+	DbJoinQuery<TParent, TChild> QueryWithJoin<TParent, TChild>()
+		where TParent : class where TChild : class;
+
+	/// <summary>
+	/// Creates a new fluent query builder for a JOIN query with two child
+	/// collections. Chain <c>Sql</c>, <c>ChildSelector1</c>,
+	/// <c>ChildSelector2</c>, <c>ParentKey</c>, <c>ChildKey1</c>,
+	/// <c>ChildKey2</c>, and optionally <c>SplitOn</c> / <c>Parameters</c>,
+	/// then call a terminal method to execute.
+	/// </summary>
+	/// <typeparam name="TParent">The parent entity type.</typeparam>
+	/// <typeparam name="TChild1">The first child entity type.</typeparam>
+	/// <typeparam name="TChild2">The second child entity type.</typeparam>
+	/// <returns>
+	/// A <see cref="DbJoinQuery{TParent, TChild1, TChild2}"/> for building
+	/// the query.
+	/// </returns>
+	/// <example>
+	/// <code>
+	/// var orders = await _db
+	///     .QueryWithJoin&lt;Order, OrderItem, OrderNote&gt;()
+	///     .Sql("SELECT o.*, oi.*, n.* FROM orders o " +
+	///          "LEFT JOIN order_items oi ON o.id = oi.order_id " +
+	///          "LEFT JOIN order_notes n ON o.id = n.order_id")
+	///     .ChildSelector1(o => o.Items)
+	///     .ChildSelector2(o => o.Notes)
+	///     .ParentKey(o => o.Id)
+	///     .ChildKey1(oi => oi.Id)
+	///     .ChildKey2(n => n.Id)
+	///     .SplitOn("Id,Id")
+	///     .ToListAsync();
+	/// </code>
+	/// </example>
+	DbJoinQuery<TParent, TChild1, TChild2>
+		QueryWithJoin<TParent, TChild1, TChild2>()
+		where TParent : class
+		where TChild1 : class
+		where TChild2 : class;
+
+	#endregion
+
+	#region <=== DbMultiQuery ===>
+
+	/// <summary>
+	/// Creates a new fluent query builder for a multiple result set query.
+	/// Chain <c>Sql</c> and optionally <c>Parameters</c>, then call a
+	/// terminal method to execute.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The container type marked with <see cref="MultiQueryAttribute"/>
+	/// containing properties decorated with <see cref="ResultSetAttribute"/>.
+	/// </typeparam>
+	/// <returns>
+	/// A <see cref="DbMultiQuery{T}"/> for building the query.
+	/// </returns>
+	/// <example>
+	/// <code>
+	/// var dashboard = await _db.QueryMultiple&lt;DashboardResult&gt;()
+	///     .Sql("SELECT * FROM users; SELECT * FROM orders;")
+	///     .ExecuteAsync();
+	/// </code>
+	/// </example>
+	DbMultiQuery<T> QueryMultiple<T>() where T : class, new();
+
+	/// <summary>
+	/// Creates a new fluent query builder for a multiple result set query
+	/// where the first result set contains parent entities and subsequent
+	/// result sets contain child entities mapped via
+	/// <see cref="ResultSetAttribute.ForeignKey"/>.
+	/// Chain <c>Sql</c> and optionally <c>Parameters</c>, then call a
+	/// terminal method to execute.
+	/// </summary>
+	/// <typeparam name="T">
+	/// The entity type containing properties decorated with
+	/// <see cref="ResultSetAttribute"/> that specify ForeignKey for child
+	/// mapping.
+	/// </typeparam>
+	/// <returns>
+	/// A <see cref="DbMultiQueryList{T}"/> for building the query.
+	/// </returns>
+	/// <example>
+	/// <code>
+	/// var orders = await _db.QueryMultipleList&lt;Order&gt;()
+	///     .Sql("SELECT * FROM orders; SELECT * FROM order_items;")
+	///     .ToListAsync();
+	/// </code>
+	/// </example>
+	DbMultiQueryList<T> QueryMultipleList<T>() where T : class, new();
+
+	#endregion
+
 	#region <=== Connection & Transaction ===>
 
 	/// <summary>
@@ -756,6 +871,35 @@ public class DbService : IDbService
 
 	/// <inheritdoc/>
 	public DbQuery<T> Query<T>() where T : class => new DbQuery<T>(this);
+
+	#endregion
+
+	#region <=== DbJoinQuery ===>
+
+	/// <inheritdoc/>
+	public DbJoinQuery<TParent, TChild> QueryWithJoin<TParent, TChild>()
+		where TParent : class where TChild : class
+		=> new DbJoinQuery<TParent, TChild>(this);
+
+	/// <inheritdoc/>
+	public DbJoinQuery<TParent, TChild1, TChild2>
+		QueryWithJoin<TParent, TChild1, TChild2>()
+		where TParent : class
+		where TChild1 : class
+		where TChild2 : class
+		=> new DbJoinQuery<TParent, TChild1, TChild2>(this);
+
+	#endregion
+
+	#region <=== DbMultiQuery ===>
+
+	/// <inheritdoc/>
+	public DbMultiQuery<T> QueryMultiple<T>() where T : class, new()
+		=> new DbMultiQuery<T>(this);
+
+	/// <inheritdoc/>
+	public DbMultiQueryList<T> QueryMultipleList<T>() where T : class, new()
+		=> new DbMultiQueryList<T>(this);
 
 	#endregion
 

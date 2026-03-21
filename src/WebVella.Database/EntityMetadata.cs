@@ -201,6 +201,19 @@ internal sealed class EntityMetadata
 		return dbColumnAttr?.Name ?? ToSnakeCase(property.Name);
 	}
 
+	/// <summary>
+	/// Returns SELECT columns prefixed with a table alias, e.g.
+	/// <c>p.column_name AS "PropertyName"</c>.
+	/// </summary>
+	/// <param name="alias">The table alias to prefix.</param>
+	internal string GetAliasedSelectColumns(string alias)
+	{
+		return string.Join(
+			", ",
+			AllProperties.Select(
+				p => $"{alias}.{GetColumnName(p)} AS \"{p.Name}\""));
+	}
+
 	private static string ToSnakeCase(string input)
 	{
 		if (string.IsNullOrEmpty(input)) return input;

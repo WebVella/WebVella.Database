@@ -26,12 +26,22 @@ namespace WebVella.Database;
 internal sealed class DbExpressionTranslator<T> where T : class
 {
 	private readonly EntityMetadata _metadata;
+	private readonly string? _tableAlias;
 	private readonly Dictionary<string, object?> _parameters = [];
 	private int _paramCount;
 
-	internal DbExpressionTranslator(EntityMetadata metadata)
+	internal DbExpressionTranslator(
+		EntityMetadata metadata, string? tableAlias = null)
 	{
 		_metadata = metadata;
+		_tableAlias = tableAlias;
+	}
+
+	private string Col(string propertyName)
+	{
+		var col = _metadata.GetColumnName(propertyName);
+		return _tableAlias is not null
+			? $"{_tableAlias}.{col}" : col;
 	}
 
 	/// <summary>
@@ -67,7 +77,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 			&& boolMem.Expression is ParameterExpression
 			&& IsBoolean(boolMem.Type))
 		{
-			return $"{_metadata.GetColumnName(boolMem.Member.Name)} = {Param(true)}";
+			return $"{Col(boolMem.Member.Name)} = {Param(true)}";
 		}
 
 		// !e.IsActive → "is_active = @p0" (false)
@@ -76,7 +86,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 			&& boolMem2.Expression is ParameterExpression
 			&& IsBoolean(boolMem2.Type))
 		{
-			return $"{_metadata.GetColumnName(boolMem2.Member.Name)} = {Param(false)}";
+			return $"{Col(boolMem2.Member.Name)} = {Param(false)}";
 		}
 
 		return Visit(expr);
@@ -117,7 +127,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 			&& IsBoolean(bm.Type)
 			&& expr.Right is ConstantExpression bc)
 		{
-			return $"{_metadata.GetColumnName(bm.Member.Name)} = {Param(bc.Value)}";
+			return $"{Col(bm.Member.Name)} = {Param(bc.Value)}";
 		}
 
 		return expr.NodeType switch
@@ -147,7 +157,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 	{
 		// Property on the entity parameter → return column name
 		if (expr.Expression is ParameterExpression)
-			return _metadata.GetColumnName(expr.Member.Name);
+			return Col(expr.Member.Name);
 
 		// Captured local variable / closure field → evaluate and parameterise
 		return Param(Normalize(Expression.Lambda(expr).Compile().DynamicInvoke()));
@@ -173,7 +183,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 		// e.Name.Contains("x") / .StartsWith("x") / .EndsWith("x")
 		if (expr.Object is MemberExpression { Expression: ParameterExpression } strProp)
 		{
-			var col = _metadata.GetColumnName(strProp.Member.Name);
+			var col = Col(strProp.Member.Name);
 
 			if (expr.Method.Name is "ToLower" or "ToLowerInvariant")
 				return $"LOWER({col})";
@@ -202,7 +212,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 				&& expr.Arguments[1] is MemberExpression
 					{ Expression: ParameterExpression } sProp)
 			{
-				var col = _metadata.GetColumnName(sProp.Member.Name);
+				var col = Col(sProp.Member.Name);
 				var collection = Evaluate(expr.Arguments[0]);
 				var arr = ToTypedArray(collection);
 				if (arr.Length == 0) return "1 = 0";
@@ -215,7 +225,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 					{ Expression: ParameterExpression } iProp
 				&& expr.Object != null)
 			{
-				var col = _metadata.GetColumnName(iProp.Member.Name);
+				var col = Col(iProp.Member.Name);
 				var collection = Evaluate(expr.Object);
 				var arr = ToTypedArray(collection);
 					if (arr.Length == 0) return "1 = 0";
@@ -229,7 +239,7 @@ internal sealed class DbExpressionTranslator<T> where T : class
 					&& expr.Arguments[0] is MemberExpression
 						{ Expression: ParameterExpression } ilikeProp)
 				{
-					var col = _metadata.GetColumnName(ilikeProp.Member.Name);
+					var col = Col(ilikeProp.Member.Name);
 					var arg = Evaluate(expr.Arguments[1])?.ToString() ?? string.Empty;
 
 					return expr.Method.Name switch

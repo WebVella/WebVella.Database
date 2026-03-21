@@ -1,5 +1,35 @@
 # WebVella.Database Changelog
 
+## [1.2.4] - 2026-03-22
+
+### ✨ New Features
+- **SQL-Free QueryMultipleList Builder**: `QueryMultipleList<T>()` now returns a
+  `DbMultiQueryList<T>` fluent builder that auto-generates multi-SELECT SQL from entity
+  metadata (`[Table]`, `[Key]`, `[ResultSet(ForeignKey)]`). Supports `.Where()`,
+  `.OrderBy()`, `.OrderByDescending()`, `.ThenBy()`, `.ThenByDescending()`, `.Limit()`,
+  `.Offset()`, and `.WithPaging()`. Child SELECTs are automatically filtered with
+  `WHERE fk IN (SELECT pk FROM parent ...)` subqueries that mirror parent conditions
+- **SQL-Free QueryWithJoin Builder**: `QueryWithJoin<TParent, TChild>()` and
+  `QueryWithJoin<TParent, TChild1, TChild2>()` now return fluent builders that
+  auto-generate JOIN SQL from `[ResultSet(ForeignKey)]` metadata. `ChildSelector`,
+  `ParentKey`, `ChildKey`, and `SplitOn` are all auto-derived in SQL-free mode. Supports
+  `.Where()`, `.OrderBy()`, `.Limit()`, `.Offset()`, `.WithPaging()`, and all ordering
+  variants
+- **Table Alias Support**: `DbExpressionTranslator` now accepts an optional table alias
+  parameter, prefixing column names (e.g., `p.customer_name = @p0`) for JOIN WHERE
+  clauses
+- **EntityMetadata.GetAliasedSelectColumns**: New internal method that generates aliased
+  SELECT columns (e.g., `p.column_name AS "PropertyName"`) for JOIN SQL generation
+
+### 📝 Notes
+- Both `DbMultiQueryList<T>` and `DbJoinQuery` builders support two modes: SQL-free
+  (expression-based) and raw SQL (`.Sql()`). When `.Sql()` is called, the raw SQL is
+  used as-is. When omitted, SQL is auto-generated from entity metadata
+- All [WHERE patterns](#supported-where-patterns) from `DbQuery<T>` are available in
+  the new builders
+
+---
+
 ## [1.2.3] - 2026-03-21
 
 ### ✨ New Features

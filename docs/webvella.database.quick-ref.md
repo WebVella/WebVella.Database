@@ -166,6 +166,50 @@ enum auto-cast to int · captured variables
 **Not supported:** arithmetic (`+`,`-`,`*`), `.Trim()`, `.Replace()`, `Math.*`,
 `string.IsNullOrEmpty()`, nested properties (`e.Address.City`), ternary, indexers.
 
+## SQL-Free Parent-Child Queries
+
+Auto-generate SQL from entity metadata — no SQL strings needed.
+
+### QueryMultipleList (Multiple SELECTs)
+
+```csharp
+// All parents with all children
+var orders = await _db.QueryMultipleList<Order>().ToListAsync();
+
+// Filtered, sorted, paginated — children auto-filtered to match
+var orders = await _db.QueryMultipleList<Order>()
+    .Where(o => o.Status == OrderStatus.Active)
+    .OrderByDescending(o => o.CreatedOn)
+    .WithPaging(page: 2, pageSize: 25)
+    .ToListAsync();
+```
+
+### QueryWithJoin (Single JOIN Query)
+
+```csharp
+// Single child — everything auto-derived from [ResultSet] metadata
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .Where(o => o.UserId == userId)
+    .OrderBy(o => o.CreatedOn)
+    .ToListAsync();
+
+// Two children
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .Where(o => o.Status == OrderStatus.Active)
+    .Limit(50)
+    .ToListAsync();
+
+// Raw SQL mode (ChildSelector, ParentKey, ChildKey, SplitOn required)
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .Sql("SELECT o.*, l.* FROM orders o LEFT JOIN order_lines l ON l.order_id = o.id")
+    .ChildSelector(o => o.Lines)
+    .ParentKey(o => o.Id)
+    .ChildKey(l => l.Id)
+    .SplitOn("Id")
+    .ToListAsync();
+```
+
 ## Raw SQL and Commands
 
 ```csharp
@@ -188,6 +232,7 @@ var userCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users");
 | Feature | Description |
 |---------|-------------|
 | **Fluent Query Builder** | Type-safe `Query<T>()` with WHERE, ORDER BY, LIMIT, OFFSET, COUNT, EXISTS |
+| **SQL-Free Parent-Child** | `QueryMultipleList<T>()` and `QueryWithJoin<T>()` auto-generate SQL from metadata |
 | **Nested Transactions** | Automatic PostgreSQL savepoint management |
 | **Advisory Locks** | Distributed coordination with simple scopes |
 | **Row Level Security** | Automatic session context for multi-tenancy |

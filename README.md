@@ -25,6 +25,7 @@ GitHub stars guide developers toward great tools. If you find this project valua
 
 - **Dapper-based CRUD operations** - Simple Insert, Update, Delete, Get, and Query methods
 - **Fluent query builder** - Type-safe, expression-based queries with WHERE, ORDER BY, paging, COUNT, and EXISTS — no SQL strings needed
+- **SQL-free parent-child queries** - `QueryMultipleList<T>()` and `QueryWithJoin<T>()` auto-generate SQL from entity metadata
 - **Nested transaction support** - Create transaction scopes that properly handle nesting
 - **PostgreSQL advisory locks** - Easy-to-use advisory lock scopes for distributed locking
 - **Row Level Security (RLS)** - Built-in support for PostgreSQL RLS with automatic session context
@@ -255,6 +256,39 @@ var user = await _db.Query<User>()
 - Collection: `list.Contains(e.Id)` → `id = ANY(@p)`
 - Enum values are automatically mapped to their underlying `int`
 
+### SQL-Free Parent-Child Queries
+
+`QueryMultipleList<T>()` and `QueryWithJoin<T>()` auto-generate SQL from entity metadata — no SQL strings needed. Entity `[Table]`, `[Key]`, and `[ResultSet(ForeignKey)]` attributes provide everything needed.
+
+```csharp
+// QueryMultipleList — auto-generates multiple SELECTs
+// Children are automatically filtered to match parent conditions
+var orders = await _db.QueryMultipleList<Order>()
+    .Where(o => o.Status == OrderStatus.Active)
+    .OrderByDescending(o => o.CreatedAt)
+    .Limit(50)
+    .ToListAsync();
+// Each order has its Lines and Notes collections populated
+
+// QueryWithJoin — auto-generates a single JOIN query
+// ChildSelector, ParentKey, ChildKey, SplitOn all auto-derived
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .Where(o => o.CustomerId == customerId)
+    .OrderBy(o => o.CreatedAt)
+    .ToListAsync();
+
+// Two children — also fully auto-derived
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .Where(o => o.TotalAmount > 100m)
+    .WithPaging(page: 2, pageSize: 25)
+    .ToListAsync();
+```
+
+All builders also support raw SQL via `.Sql()` for full control when needed. See the
+[complete documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md)
+for details.
+
 ### Custom SQL and Commands
 
 For advanced queries or bulk operations that require raw SQL:
@@ -474,7 +508,7 @@ var dashboard = await _db.QueryMultipleAsync<UserDashboard>(sql, new { UserId = 
 
 ### QueryMultipleList with Parent-Child Mapping
 
-Use `QueryMultipleList<T>` to fetch a list of parent entities with child collections automatically mapped:
+Use `QueryMultipleList<T>` to fetch parent entities with child collections. The recommended approach uses the SQL-free fluent builder:
 
 ```csharp
 public class Order
@@ -510,6 +544,13 @@ public class OrderNote
     public string Text { get; set; } = string.Empty;
 }
 
+// SQL-free — auto-generates all SELECTs from metadata
+var orders = await _db.QueryMultipleList<Order>()
+    .Where(o => o.CustomerName == "Acme Corp")
+    .OrderByDescending(o => o.TotalAmount)
+    .ToListAsync();
+
+// Raw SQL — for full control
 var sql = @"
     SELECT * FROM orders WHERE customer_id = @CustomerId;
     SELECT ol.* FROM order_lines ol 
@@ -517,8 +558,6 @@ var sql = @"
     SELECT n.* FROM order_notes n 
         JOIN orders o ON n.order_id = o.id WHERE o.customer_id = @CustomerId;
 ";
-
-// Each order will have its Lines and Notes collections populated
 var orders = await _db.QueryMultipleListAsync<Order>(sql, new { CustomerId = customerId });
 ```
 
@@ -529,10 +568,26 @@ The `[ResultSet]` attribute supports:
 
 ### QueryWithJoin for Single Query Mapping
 
-Use `QueryWithJoin` when you want to use a single SQL query with JOINs instead of multiple result sets:
+Use `QueryWithJoin` when you want a single SQL query with JOINs. The recommended approach uses the SQL-free fluent builder:
 
 ```csharp
-// Single child collection
+// SQL-free — single child, everything auto-derived
+var orders = await _db.QueryWithJoin<Order, OrderLine>()
+    .Where(o => o.CustomerId == customerId)
+    .OrderBy(o => o.CreatedAt)
+    .ToListAsync();
+
+// SQL-free — two children
+var orders = await _db
+    .QueryWithJoin<Order, OrderLine, OrderNote>()
+    .Where(o => o.CustomerId == customerId)
+    .ToListAsync();
+```
+
+Raw SQL mode is also supported for full control:
+
+```csharp
+// Raw SQL — single child collection
 var sql = @"
     SELECT o.*, l.*
     FROM orders o
@@ -551,7 +606,7 @@ var orders = await _db.QueryWithJoinAsync<Order, OrderLine>(
 ```
 
 ```csharp
-// Two child collections (handles Cartesian product deduplication)
+// Raw SQL — two child collections (handles Cartesian product deduplication)
 var sql = @"
     SELECT o.*, l.*, n.*
     FROM orders o
