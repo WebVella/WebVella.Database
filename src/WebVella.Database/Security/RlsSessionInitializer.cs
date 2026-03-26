@@ -36,8 +36,7 @@ internal class RlsSessionInitializer
 	/// </summary>
 	public bool HasContext =>
 		_options.Enabled &&
-		(_contextProvider.TenantId.HasValue ||
-		 _contextProvider.UserId.HasValue ||
+		(_contextProvider.EntityId != null ||
 		 _contextProvider.CustomClaims.Count > 0);
 
 	/// <summary>
@@ -82,23 +81,21 @@ internal class RlsSessionInitializer
 	{
 		var statements = new List<string>();
 		var isLocal = _options.UseLocalSettings ? "true" : "false";
-		var prefix = _options.Prefix;
+		var settingName = _options.SettingName;
+		var claimsNamespace = settingName.Contains('.')
+			? settingName[..settingName.IndexOf('.')]
+			: settingName;
 
-		if (_contextProvider.TenantId.HasValue)
+		if (_contextProvider.EntityId != null)
 		{
-			statements.Add(BuildSetConfigStatement($"{prefix}.tenant_id", _contextProvider.TenantId.ToString()!, isLocal));
-		}
-
-		if (_contextProvider.UserId.HasValue)
-		{
-			statements.Add(BuildSetConfigStatement($"{prefix}.user_id", _contextProvider.UserId.ToString()!, isLocal));
+			statements.Add(BuildSetConfigStatement(settingName, _contextProvider.EntityId, isLocal));
 		}
 
 		foreach (var claim in _contextProvider.CustomClaims)
 		{
 			var key = SanitizeKey(claim.Key);
 			var value = claim.Value ?? string.Empty;
-			statements.Add(BuildSetConfigStatement($"{prefix}.{key}", value, isLocal));
+			statements.Add(BuildSetConfigStatement($"{claimsNamespace}.{key}", value, isLocal));
 		}
 
 		return statements.Count > 0 ? string.Join("; ", statements) : string.Empty;

@@ -2392,11 +2392,8 @@ public class DbService : IDbService
 
 		var parts = new List<string>();
 
-		if (_rlsContextProvider.TenantId.HasValue)
-			parts.Add($"t:{_rlsContextProvider.TenantId}");
-
-		if (_rlsContextProvider.UserId.HasValue)
-			parts.Add($"u:{_rlsContextProvider.UserId}");
+		if (_rlsContextProvider.EntityId != null)
+			parts.Add($"e:{_rlsContextProvider.EntityId}");
 
 		if (_rlsContextProvider.CustomClaims.Count > 0)
 		{

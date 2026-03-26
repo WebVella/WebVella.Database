@@ -23,8 +23,7 @@ public class RlsTests
 	{
 		var provider = NullRlsContextProvider.Instance;
 
-		provider.TenantId.Should().BeNull();
-		provider.UserId.Should().BeNull();
+		provider.EntityId.Should().BeNull();
 		provider.CustomClaims.Should().BeEmpty();
 	}
 
@@ -46,7 +45,7 @@ public class RlsTests
 	{
 		var options = new RlsOptions();
 
-		options.Prefix.Should().Be("app");
+		options.SettingName.Should().Be("app.user_id");
 		options.UseLocalSettings.Should().BeTrue();
 		options.Enabled.Should().BeTrue();
 	}
@@ -56,12 +55,12 @@ public class RlsTests
 	{
 		var options = new RlsOptions
 		{
-			Prefix = "rls",
+			SettingName = "rls.user_id",
 			UseLocalSettings = false,
 			Enabled = false
 		};
 
-		options.Prefix.Should().Be("rls");
+		options.SettingName.Should().Be("rls.user_id");
 		options.UseLocalSettings.Should().BeFalse();
 		options.Enabled.Should().BeFalse();
 	}
@@ -73,7 +72,7 @@ public class RlsTests
 	[Fact]
 	public void DbService_WithRlsContextProvider_ShouldCreateInstance()
 	{
-		var rlsProvider = new TestRlsContextProvider(Guid.NewGuid(), Guid.NewGuid());
+		var rlsProvider = new TestRlsContextProvider(Guid.NewGuid().ToString());
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, null);
 
@@ -91,34 +90,33 @@ public class RlsTests
 	[Fact]
 	public async Task DbService_WithRlsContext_ShouldSetSessionVariables()
 	{
-		var tenantId = Guid.NewGuid();
-		var userId = Guid.NewGuid();
-		var rlsProvider = new TestRlsContextProvider(tenantId, userId);
+		var entityId = Guid.NewGuid().ToString();
+		var rlsProvider = new TestRlsContextProvider(entityId);
 		var options = new RlsOptions { UseLocalSettings = false };
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, options);
 
 		await using var scope = await dbService.CreateTransactionScopeAsync();
 		var result = await dbService.ExecuteScalarAsync<string>(
-			"SELECT current_setting('app.tenant_id', true)");
+			"SELECT current_setting('app.user_id', true)");
 
-		result.Should().Be(tenantId.ToString());
+		result.Should().Be(entityId);
 	}
 
 	[Fact]
-	public async Task DbService_WithRlsContextAndCustomPrefix_ShouldSetSessionVariablesWithPrefix()
+	public async Task DbService_WithRlsContextAndCustomSettingName_ShouldSetSessionVariablesWithSettingName()
 	{
-		var tenantId = Guid.NewGuid();
-		var rlsProvider = new TestRlsContextProvider(tenantId, null);
-		var options = new RlsOptions { Prefix = "myapp", UseLocalSettings = false };
+		var entityId = Guid.NewGuid().ToString();
+		var rlsProvider = new TestRlsContextProvider(entityId);
+		var options = new RlsOptions { SettingName = "myapp.user_id", UseLocalSettings = false };
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, options);
 
 		await using var scope = await dbService.CreateTransactionScopeAsync();
 		var result = await dbService.ExecuteScalarAsync<string>(
-			"SELECT current_setting('myapp.tenant_id', true)");
+			"SELECT current_setting('myapp.user_id', true)");
 
-		result.Should().Be(tenantId.ToString());
+		result.Should().Be(entityId);
 	}
 
 	[Fact]
@@ -129,7 +127,7 @@ public class RlsTests
 			["role"] = "admin",
 			["department"] = "engineering"
 		};
-		var rlsProvider = new TestRlsContextProvider(null, null, customClaims);
+		var rlsProvider = new TestRlsContextProvider(null, customClaims);
 		var options = new RlsOptions { UseLocalSettings = false };
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, options);
@@ -146,14 +144,14 @@ public class RlsTests
 	[Fact]
 	public async Task DbService_WithDisabledRls_ShouldNotSetSessionVariables()
 	{
-		var tenantId = Guid.NewGuid();
-		var rlsProvider = new TestRlsContextProvider(tenantId, null);
+		var entityId = Guid.NewGuid().ToString();
+		var rlsProvider = new TestRlsContextProvider(entityId);
 		var options = new RlsOptions { Enabled = false };
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, options);
 
 		var result = await dbService.ExecuteScalarAsync<string>(
-			"SELECT current_setting('app.tenant_id', true)");
+			"SELECT current_setting('app.user_id', true)");
 
 		result.Should().BeNullOrEmpty();
 	}
@@ -163,59 +161,59 @@ public class RlsTests
 	#region <=== Cache with RLS Tests ===>
 
 	[Fact]
-	public void Cache_WithDifferentTenants_ShouldGenerateDifferentKeys()
+	public void Cache_WithDifferentEntities_ShouldGenerateDifferentKeys()
 	{
 		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
 			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
 
 		var entityId = Guid.NewGuid();
-		var tenant1Context = "t:11111111-1111-1111-1111-111111111111";
-		var tenant2Context = "t:22222222-2222-2222-2222-222222222222";
+		var entity1Context = "e:11111111-1111-1111-1111-111111111111";
+		var entity2Context = "e:22222222-2222-2222-2222-222222222222";
 
-		var key1 = cache.GenerateKey<TestEntity>(entityId, tenant1Context);
-		var key2 = cache.GenerateKey<TestEntity>(entityId, tenant2Context);
+		var key1 = cache.GenerateKey<TestEntity>(entityId, entity1Context);
+		var key2 = cache.GenerateKey<TestEntity>(entityId, entity2Context);
 		var keyNoContext = cache.GenerateKey<TestEntity>(entityId);
 
 		key1.Should().NotBe(key2);
 		key1.Should().NotBe(keyNoContext);
-		key1.Should().Contain("Rls:t:11111111");
-		key2.Should().Contain("Rls:t:22222222");
+		key1.Should().Contain("Rls:e:11111111");
+		key2.Should().Contain("Rls:e:22222222");
 		keyNoContext.Should().NotContain("Rls:");
 	}
 
 	[Fact]
-	public void Cache_CollectionKey_WithDifferentTenants_ShouldGenerateDifferentKeys()
+	public void Cache_CollectionKey_WithDifferentEntities_ShouldGenerateDifferentKeys()
 	{
 		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
 			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
 
-		var tenant1Context = "t:11111111-1111-1111-1111-111111111111";
-		var tenant2Context = "t:22222222-2222-2222-2222-222222222222";
+		var entity1Context = "e:11111111-1111-1111-1111-111111111111";
+		var entity2Context = "e:22222222-2222-2222-2222-222222222222";
 
-		var key1 = cache.GenerateCollectionKey<TestEntity>(null, tenant1Context);
-		var key2 = cache.GenerateCollectionKey<TestEntity>(null, tenant2Context);
+		var key1 = cache.GenerateCollectionKey<TestEntity>(null, entity1Context);
+		var key2 = cache.GenerateCollectionKey<TestEntity>(null, entity2Context);
 		var keyNoContext = cache.GenerateCollectionKey<TestEntity>();
 
 		key1.Should().NotBe(key2);
 		key1.Should().NotBe(keyNoContext);
-		key1.Should().Contain("Rls:t:11111111");
-		key2.Should().Contain("Rls:t:22222222");
+		key1.Should().Contain("Rls:e:11111111");
+		key2.Should().Contain("Rls:e:22222222");
 		keyNoContext.Should().NotContain("Rls:");
 	}
 
 	[Fact]
-	public void Cache_WithTenantAndUser_ShouldIncludeBothInKey()
+	public void Cache_WithEntityAndCustomClaim_ShouldIncludeBothInKey()
 	{
 		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
 			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
 
 		var entityId = Guid.NewGuid();
-		var context = "t:11111111-1111-1111-1111-111111111111|u:22222222-2222-2222-2222-222222222222";
+		var context = "e:11111111-1111-1111-1111-111111111111|c:role:admin";
 
 		var key = cache.GenerateKey<TestEntity>(entityId, context);
 
-		key.Should().Contain("Rls:t:11111111");
-		key.Should().Contain("u:22222222");
+		key.Should().Contain("Rls:e:11111111");
+		key.Should().Contain("c:role:admin");
 	}
 
 	[Fact]
@@ -225,12 +223,12 @@ public class RlsTests
 			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
 
 		var entityId = Guid.NewGuid();
-		var context = "t:11111111-1111-1111-1111-111111111111|c:department:engineering,role:admin";
+		var context = "e:11111111-1111-1111-1111-111111111111|c:department:engineering,role:admin";
 
 		var key = cache.GenerateKey<TestEntity>(entityId, context);
 
 		key.Should().Contain("Rls:");
-		key.Should().Contain("t:11111111");
+		key.Should().Contain("e:11111111");
 		key.Should().Contain("c:department:engineering,role:admin");
 	}
 
@@ -241,8 +239,8 @@ public class RlsTests
 			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
 
 		var entityId = Guid.NewGuid();
-		var adminContext = "t:11111111-1111-1111-1111-111111111111|c:role:admin";
-		var userContext = "t:11111111-1111-1111-1111-111111111111|c:role:user";
+		var adminContext = "e:11111111-1111-1111-1111-111111111111|c:role:admin";
+		var userContext = "e:11111111-1111-1111-1111-111111111111|c:role:user";
 
 		var adminKey = cache.GenerateKey<TestEntity>(entityId, adminContext);
 		var userKey = cache.GenerateKey<TestEntity>(entityId, userContext);
@@ -271,7 +269,7 @@ public class RlsTests
 
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid(), null));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()));
 
 		var serviceProvider = services.BuildServiceProvider();
 		var accessor = serviceProvider.GetService<IDbConnectionStringAccessor>();
@@ -286,7 +284,7 @@ public class RlsTests
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid(), null));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()));
 		services.AddWebVellaDatabaseMigrations();
 
 		var serviceProvider = services.BuildServiceProvider();
@@ -299,14 +297,13 @@ public class RlsTests
 	[Fact]
 	public async Task MigrationService_WithRlsEnabled_ShouldBypassRlsContext()
 	{
-		var tenantId = Guid.NewGuid();
-		var userId = Guid.NewGuid();
+		var entityId = Guid.NewGuid().ToString();
 		var tableName = $"_rls_test_migration_{Guid.NewGuid():N}";
 
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(tenantId, userId));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(entityId));
 		services.AddWebVellaDatabaseMigrations(new DbMigrationOptions
 		{
 			VersionTableName = tableName
@@ -334,14 +331,13 @@ public class RlsTests
 	[Fact]
 	public async Task MigrationService_WithRlsEnabled_ShouldNotSetSessionVariables()
 	{
-		var tenantId = Guid.NewGuid();
-		var userId = Guid.NewGuid();
+		var entityId = Guid.NewGuid().ToString();
 		var tableName = $"_rls_migration_check_{Guid.NewGuid():N}";
 
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(tenantId, userId),
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(entityId),
 			enableCaching: false,
 			rlsOptions: new RlsOptions { UseLocalSettings = false });
 		services.AddWebVellaDatabaseMigrations(new DbMigrationOptions
@@ -356,15 +352,15 @@ public class RlsTests
 			using var scope = serviceProvider.CreateScope();
 
 			var regularDb = scope.ServiceProvider.GetRequiredService<IDbService>();
-			var regularTenantId = await regularDb.ExecuteScalarAsync<string>(
-				"SELECT current_setting('app.tenant_id', true)");
-			regularTenantId.Should().Be(tenantId.ToString());
+			var regularEntityId = await regularDb.ExecuteScalarAsync<string>(
+				"SELECT current_setting('app.user_id', true)");
+			regularEntityId.Should().Be(entityId);
 
 			var accessor = scope.ServiceProvider.GetRequiredService<IDbConnectionStringAccessor>();
 			var migrationDb = new DbService(accessor.ConnectionString, NullDbEntityCache.Instance, null, null);
-			var migrationTenantId = await migrationDb.ExecuteScalarAsync<string>(
-				"SELECT current_setting('app.tenant_id', true)");
-			migrationTenantId.Should().BeNullOrEmpty();
+			var migrationEntityId = await migrationDb.ExecuteScalarAsync<string>(
+				"SELECT current_setting('app.user_id', true)");
+			migrationEntityId.Should().BeNullOrEmpty();
 		}
 		finally
 		{
@@ -381,7 +377,7 @@ public class RlsTests
 
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid(), null),
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()),
 			enableCaching: false);
 
 		var serviceProvider = services.BuildServiceProvider();
@@ -396,7 +392,7 @@ public class RlsTests
 	public void AddWebVellaDatabaseWithRls_WithConnectionStringFactory_ShouldRegisterConnectionStringAccessor()
 	{
 		var services = new ServiceCollection();
-		services.AddSingleton<IRlsContextProvider>(new TestRlsContextProvider(Guid.NewGuid(), null));
+		services.AddSingleton<IRlsContextProvider>(new TestRlsContextProvider(Guid.NewGuid().ToString()));
 
 		services.AddWebVellaDatabase(_ => TestConnectionString, enableCaching: false);
 
@@ -415,7 +411,7 @@ public class RlsTests
 
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid(), null),
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()),
 			enableCaching: false);
 
 		var serviceProvider = services.BuildServiceProvider();
@@ -434,7 +430,7 @@ public class RlsTests
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid(), Guid.NewGuid()));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()));
 
 		var serviceProvider = services.BuildServiceProvider();
 
@@ -493,17 +489,14 @@ public class RlsTests
 		private readonly Dictionary<string, string> _customClaims;
 
 		public TestRlsContextProvider(
-			Guid? tenantId,
-			Guid? userId,
+			string? entityId,
 			Dictionary<string, string>? customClaims = null)
 		{
-			TenantId = tenantId;
-			UserId = userId;
+			EntityId = entityId;
 			_customClaims = customClaims ?? [];
 		}
 
-		public Guid? TenantId { get; }
-		public Guid? UserId { get; }
+		public string? EntityId { get; }
 		public IReadOnlyDictionary<string, string> CustomClaims => _customClaims;
 	}
 

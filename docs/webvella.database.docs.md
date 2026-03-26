@@ -1861,19 +1861,19 @@ builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
 
 ## Row Level Security
 
-WebVella.Database provides built-in support for PostgreSQL Row Level Security (RLS) through automatic session variable injection. This allows you to implement multi-tenant data isolation and user-based access control at the database level.
+WebVella.Database provides built-in support for PostgreSQL Row Level Security (RLS) through automatic session variable injection. This allows you to implement entity-based data isolation and role-based access control at the database level.
 
 ### Key Features
 
 - **Automatic session context** - Security context is automatically set on each connection
 - **PostgreSQL native RLS** - Leverages PostgreSQL's built-in row-level security policies
 - **Flexible context provider** - Implement your own context provider to integrate with any authentication system
-- **Custom claims support** - Pass additional claims beyond tenant and user IDs
+- **Custom claims support** - Pass additional claims beyond the entity identifier
 - **Transaction-aware** - Session variables respect transaction boundaries
 
 ### How It Works
 
-1. Implement `IRlsContextProvider` to provide security context (tenant ID, user ID, custom claims)
+1. Implement `IRlsContextProvider` to provide security context (entity ID and custom claims)
 2. Register the provider with `AddWebVellaDatabaseWithRls<T>()`
 3. Each database connection automatically sets PostgreSQL session variables
 4. PostgreSQL RLS policies use `current_setting('app.variable_name')` to filter data
@@ -1892,21 +1892,13 @@ public class HttpRlsContextProvider : IRlsContextProvider
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public Guid? TenantId => GetClaimAsGuid("tenant_id");
-
-    public Guid? UserId => GetClaimAsGuid("sub");
+    public string? EntityId => GetClaim("entity_id");
 
     public IReadOnlyDictionary<string, string> CustomClaims => new Dictionary<string, string>
     {
         ["role"] = GetClaim("role") ?? "user",
         ["department"] = GetClaim("department") ?? string.Empty
     };
-
-    private Guid? GetClaimAsGuid(string claimType)
-    {
-        var value = GetClaim(claimType);
-        return Guid.TryParse(value, out var guid) ? guid : null;
-    }
 
     private string? GetClaim(string claimType) =>
         _httpContextAccessor.HttpContext?.User?.FindFirst(claimType)?.Value;
@@ -1930,9 +1922,9 @@ builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
     enableCaching: false,
     rlsOptions: new RlsOptions
     {
-        Prefix = "myapp",        // Default: "app"
-        UseLocalSettings = true, // Default: true (transaction-scoped)
-        Enabled = true           // Default: true
+        SettingName = "myapp.user_id", // Default: "app.user_id"
+        UseLocalSettings = true,        // Default: true (transaction-scoped)
+        Enabled = true                  // Default: true
     });
 
 // With factory pattern
@@ -1958,14 +1950,9 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 -- Force RLS for table owner (optional but recommended)
 ALTER TABLE orders FORCE ROW LEVEL SECURITY;
 
--- Create policy for tenant isolation
-CREATE POLICY tenant_isolation ON orders
-    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
-
--- Create policy for user-specific data
-CREATE POLICY user_orders ON orders
-    FOR SELECT
-    USING (user_id = current_setting('app.user_id', true)::uuid);
+-- Create policy for entity isolation
+CREATE POLICY entity_isolation ON orders
+    USING (entity_id = current_setting('app.entity_id', true));
 
 -- Create policy using custom claims
 CREATE POLICY admin_access ON orders
@@ -1975,11 +1962,8 @@ CREATE POLICY admin_access ON orders
 -- Combined policy example
 CREATE POLICY order_access ON orders
     USING (
-        tenant_id = current_setting('app.tenant_id', true)::uuid
-        AND (
-            user_id = current_setting('app.user_id', true)::uuid
-            OR current_setting('app.role', true) = 'admin'
-        )
+        entity_id = current_setting('app.entity_id', true)
+        OR current_setting('app.role', true) = 'admin'
     );
 ```
 
@@ -1987,18 +1971,17 @@ CREATE POLICY order_access ON orders
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `Prefix` | `"app"` | Prefix for all session variables (e.g., `app.tenant_id`) |
+| `SettingName` | `"app.user_id"` | Full PostgreSQL session variable name for the entity identifier (e.g., `app.user_id`) |
 | `UseLocalSettings` | `true` | When `true`, variables are transaction-scoped; when `false`, session-scoped |
 | `Enabled` | `true` | Set to `false` to bypass RLS (useful for admin/migration scenarios) |
 
 ### Session Variables Reference
 
-When `RlsOptions.Prefix = "app"` (default):
+When `RlsOptions.SettingName = "app.user_id"` (default):
 
 | Context Property | PostgreSQL Variable | Access in Policy |
 |------------------|---------------------|------------------|
-| `TenantId` | `app.tenant_id` | `current_setting('app.tenant_id', true)::uuid` |
-| `UserId` | `app.user_id` | `current_setting('app.user_id', true)::uuid` |
+| `EntityId` | `app.user_id` | `current_setting('app.user_id', true)` |
 | Custom claim "role" | `app.role` | `current_setting('app.role', true)` |
 
 ### Bypassing RLS for Admin Operations
@@ -2033,20 +2016,20 @@ public class EnableRowLevelSecurity : DbMigration
     public override Task<string> GenerateSqlAsync(IServiceProvider serviceProvider)
     {
         return Task.FromResult("""
-            -- Add tenant_id column if not exists
-            ALTER TABLE orders ADD COLUMN IF NOT EXISTS tenant_id UUID;
+            -- Add entity_id column if not exists
+            ALTER TABLE orders ADD COLUMN IF NOT EXISTS entity_id TEXT;
 
             -- Enable RLS
             ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
             ALTER TABLE orders FORCE ROW LEVEL SECURITY;
 
-            -- Create tenant isolation policy
-            DROP POLICY IF EXISTS tenant_isolation ON orders;
-            CREATE POLICY tenant_isolation ON orders
-                USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+            -- Create entity isolation policy
+            DROP POLICY IF EXISTS entity_isolation ON orders;
+            CREATE POLICY entity_isolation ON orders
+                USING (entity_id = current_setting('app.entity_id', true));
 
             -- Create index for performance
-            CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_entity ON orders(entity_id);
             """);
     }
 }
@@ -2066,11 +2049,11 @@ public class EnableRowLevelSecurity : DbMigration
 
 6. **Handle missing context gracefully** - Design policies to handle NULL values appropriately:
    ```sql
-   -- Returns no rows if tenant_id is not set
-   USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+   -- Returns no rows if entity_id is not set
+   USING (entity_id = current_setting('app.entity_id', true));
 
-   -- Returns all rows if tenant_id is not set (dangerous!)
-   USING (tenant_id = COALESCE(current_setting('app.tenant_id', true)::uuid, tenant_id));
+   -- Returns all rows if entity_id is not set (dangerous!)
+   USING (entity_id = COALESCE(current_setting('app.entity_id', true), entity_id));
    ```
 
 ### RLS-Aware Caching
@@ -2081,19 +2064,16 @@ When using both RLS and entity caching (`[Cacheable]`), the cache automatically 
 // Without RLS context:
 Entity:MyApp.Product:Id:abc123
 
-// With tenant context:
-Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid
-
-// With tenant and user context:
-Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid|u:user-guid
+// With entity context:
+Entity:MyApp.Product:Id:abc123:Rls:e:my-entity-value
 
 // With custom claims (e.g., role-based access):
-Entity:MyApp.Product:Id:abc123:Rls:t:tenant-guid|c:department:sales,role:manager
+Entity:MyApp.Product:Id:abc123:Rls:e:my-entity-value|c:department:sales,role:manager
 ```
 
 **How it works:**
-- Cache keys automatically include tenant ID, user ID, and custom claims from `IRlsContextProvider`
-- Different tenants/users/roles get separate cache entries for the same entity
+- Cache keys automatically include entity ID and custom claims from `IRlsContextProvider`
+- Different entities/roles get separate cache entries for the same record
 - Custom claims are sorted alphabetically for consistent key generation
 - Cache invalidation still works per-entity-type (invalidates all context variants)
 
@@ -2777,7 +2757,7 @@ enum auto-cast to `int` · captured variables and closures
 ### v1.2.0
 - Added Row Level Security (RLS) support with automatic session variable injection
 - Added `IRlsContextProvider` interface for implementing custom security context providers
-- Added `RlsOptions` for configuring RLS behavior (prefix, local settings, enable/disable)
+- Added `RlsOptions` for configuring RLS behavior (setting name, local settings, enable/disable)
 - Added `NullRlsContextProvider` for scenarios where RLS should be bypassed
 - Added `AddWebVellaDatabaseWithRls<T>()` extension methods for easy DI registration
 - Session variables are automatically set on each connection for use in PostgreSQL RLS policies

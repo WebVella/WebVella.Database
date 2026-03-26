@@ -23,11 +23,9 @@ public class HttpRlsContextProvider : IRlsContextProvider
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
     public HttpRlsContextProvider(IHttpContextAccessor httpContextAccessor) => _httpContextAccessor = httpContextAccessor;
-    public Guid? TenantId => GetClaimAsGuid("tenant_id");
-    public Guid? UserId => GetClaimAsGuid("sub");
+    public string? EntityId => GetClaim("entity_id");
     public IReadOnlyDictionary<string, string> CustomClaims => new Dictionary<string, string> { ["role"] = GetClaim("role") ?? "user" };
-    
-    private Guid? GetClaimAsGuid(string type) => Guid.TryParse(_httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value, out var g) ? g : null;
+
     private string? GetClaim(string type) => _httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value;
 }
 

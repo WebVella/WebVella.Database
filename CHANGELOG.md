@@ -1,5 +1,45 @@
 # WebVella.Database Changelog
 
+## [1.3.0] - 2026-06-01
+
+### 💥 Breaking Changes
+- **`IRlsContextProvider` simplified**: Removed `Guid? TenantId` and `Guid? UserId` properties.
+  Replaced with a single `string? EntityId` property for the primary RLS identifier.
+  - Implementations must be updated to remove `TenantId` / `UserId` and add `string? EntityId`
+  - `NullRlsContextProvider` updated accordingly
+- **`RlsOptions.Prefix` renamed to `SettingName`**: The property now holds the **full**
+  PostgreSQL session variable name for the entity identifier, default changed to `"app.user_id"`.
+  Custom claims still use the namespace derived from the part before the first dot.
+- **Cache key format changed**: RLS cache context prefix changed from `t:<guid>|u:<guid>` to `e:<value>`
+
+### ✨ What to do
+Update your `IRlsContextProvider` implementation:
+```csharp
+// Before
+public Guid? TenantId => GetClaimAsGuid("tenant_id");
+public Guid? UserId   => GetClaimAsGuid("sub");
+
+// After
+public string? EntityId => GetClaim("entity_id");
+```
+Update `RlsOptions` usage:
+```csharp
+// Before
+new RlsOptions { Prefix = "app" }
+
+// After
+new RlsOptions { SettingName = "app.user_id" }
+```
+Update your PostgreSQL RLS policies:
+```sql
+-- Before
+USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+-- After
+USING (entity_id = current_setting('app.user_id', true))
+```
+
+---
+
 ## [1.2.4] - 2026-03-22
 
 ### ✨ New Features

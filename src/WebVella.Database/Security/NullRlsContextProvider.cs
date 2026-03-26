@@ -21,11 +21,7 @@ public sealed class NullRlsContextProvider : IRlsContextProvider
 
 	/// <inheritdoc />
 	/// <remarks>Always returns <c>null</c>.</remarks>
-	public Guid? TenantId => null;
-
-	/// <inheritdoc />
-	/// <remarks>Always returns <c>null</c>.</remarks>
-	public Guid? UserId => null;
+	public string? EntityId => null;
 
 	/// <inheritdoc />
 	/// <remarks>Always returns an empty dictionary.</remarks>

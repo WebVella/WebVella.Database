@@ -6,14 +6,16 @@ namespace WebVella.Database.Security;
 public class RlsOptions
 {
 	/// <summary>
-	/// Gets or sets the prefix used for all RLS session variables.
-	/// Default is "app".
+	/// Gets or sets the full PostgreSQL session variable name used for the RLS entity identifier.
+	/// Default is "app.user_id".
 	/// </summary>
 	/// <remarks>
-	/// Variables will be set as <c>{Prefix}.tenant_id</c>, <c>{Prefix}.user_id</c>, etc.
-	/// This allows you to use <c>current_setting('app.tenant_id')</c> in your RLS policies.
+	/// This value is used directly as the PostgreSQL variable name when setting the entity identifier,
+	/// e.g. <c>set_config('app.user_id', value, true)</c>.
+	/// Custom claims derive their namespace from the part before the first dot of this value,
+	/// so a setting name of <c>"app.user_id"</c> will place custom claims under <c>app.{key}</c>.
 	/// </remarks>
-	public string Prefix { get; set; } = "app";
+	public string SettingName { get; set; } = "app.user_id";
 
 	/// <summary>
 	/// Gets or sets whether to use local (transaction-scoped) settings.

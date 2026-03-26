@@ -67,7 +67,7 @@ builder.Services.AddWebVellaDatabase(
 For multi-tenant applications, enable RLS to automatically set PostgreSQL session variables:
 
 ```csharp
-// Implement IRlsContextProvider to provide tenant/user context
+// Implement IRlsContextProvider to provide entity context
 public class HttpRlsContextProvider : IRlsContextProvider
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -77,15 +77,12 @@ public class HttpRlsContextProvider : IRlsContextProvider
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public Guid? TenantId => GetClaimAsGuid("tenant_id");
-    public Guid? UserId => GetClaimAsGuid("sub");
+    public string? EntityId => GetClaim("entity_id");
     public IReadOnlyDictionary<string, string> CustomClaims => new Dictionary<string, string>
     {
         ["role"] = GetClaim("role") ?? "user"
     };
 
-    private Guid? GetClaimAsGuid(string type) =>
-        Guid.TryParse(_httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value, out var g) ? g : null;
     private string? GetClaim(string type) =>
         _httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value;
 }
@@ -97,14 +94,14 @@ builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionSt
 builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
     connectionString,
     enableCaching: true,
-    rlsOptions: new RlsOptions { Prefix = "app" });
+    rlsOptions: new RlsOptions { SettingName = "app.user_id" });
 ```
 
 Each connection automatically sets session variables that PostgreSQL RLS policies can use:
 ```sql
 -- Create RLS policy using the session variable
-CREATE POLICY tenant_isolation ON orders
-    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+CREATE POLICY entity_isolation ON orders
+    USING (entity_id = current_setting('app.entity_id', true));
 ```
 
 ## Usage Examples
