@@ -755,6 +755,11 @@ public interface IDbService
 	#region <=== Connection & Transaction ===>
 
 	/// <summary>
+	/// Gets the PostgreSQL connection string used by this service.
+	/// </summary>
+	string ConnectionString { get; }
+
+	/// <summary>
 	/// Creates a new database connection.
 	/// </summary>
 	/// <returns>A new <see cref="IDbConnection"/> instance.</returns>
@@ -807,6 +812,44 @@ public interface IDbService
 	/// <returns>A new <see cref="IDbAdvisoryLockScope"/> instance.</returns>
 	Task<IDbAdvisoryLockScope> CreateAdvisoryLockScopeAsync(long lockKey);
 
+	/// <summary>
+	/// Applies RLS session variables to the current connection, re-enabling Row Level Security
+	/// after a prior <see cref="DisableRls"/> call.
+	/// When inside a transaction scope, the variables are applied on the transaction connection
+	/// immediately. Future connections created within the same async context will also
+	/// initialize RLS automatically.
+	/// </summary>
+	void EnableRls();
+
+	/// <summary>
+	/// Asynchronously applies RLS session variables to the current connection, re-enabling Row
+	/// Level Security after a prior <see cref="DisableRlsAsync"/> call.
+	/// When inside a transaction scope, the variables are applied on the transaction connection
+	/// immediately. Future connections created within the same async context will also
+	/// initialize RLS automatically.
+	/// </summary>
+	/// <returns>A task representing the asynchronous operation.</returns>
+	Task EnableRlsAsync();
+
+	/// <summary>
+	/// Resets RLS session variables on the current connection to empty strings, disabling Row
+	/// Level Security for subsequent queries.
+	/// When inside a transaction scope, the variables are reset on the transaction connection
+	/// immediately. Future connections created within the same async context will skip
+	/// RLS initialization until <see cref="EnableRls"/> is called.
+	/// </summary>
+	void DisableRls();
+
+	/// <summary>
+	/// Asynchronously resets RLS session variables on the current connection to empty strings,
+	/// disabling Row Level Security for subsequent queries.
+	/// When inside a transaction scope, the variables are reset on the transaction connection
+	/// immediately. Future connections created within the same async context will skip
+	/// RLS initialization until <see cref="EnableRlsAsync"/> is called.
+	/// </summary>
+	/// <returns>A task representing the asynchronous operation.</returns>
+	Task DisableRlsAsync();
+
 	#endregion
 }
 
@@ -820,6 +863,7 @@ public class DbService : IDbService
 	private readonly IDbEntityCache _cache;
 	private readonly Security.RlsSessionInitializer? _rlsInitializer;
 	private readonly Security.IRlsContextProvider? _rlsContextProvider;
+	private readonly AsyncLocal<bool> _rlsSuppressed = new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="DbService"/> class.
@@ -2274,6 +2318,9 @@ public class DbService : IDbService
 	#region <=== Connection & Transaction ===>
 
 	/// <inheritdoc/>
+	public string ConnectionString => _connectionString;
+
+	/// <inheritdoc/>
 	public IDbConnection CreateConnection()
 	{
 		var currentCtx = DbConnectionContext.GetCurrentContext();
@@ -2285,7 +2332,7 @@ public class DbService : IDbService
 
 		var connection = currentCtx.CreateConnection();
 
-		if (_rlsInitializer != null && _rlsInitializer.HasContext)
+		if (_rlsInitializer != null && _rlsInitializer.HasContext && !_rlsSuppressed.Value)
 		{
 			_rlsInitializer.InitializeSession(connection.GetUnderlyingConnection());
 		}
@@ -2305,7 +2352,7 @@ public class DbService : IDbService
 
 		var connection = await currentCtx.CreateConnectionAsync();
 
-		if (_rlsInitializer != null && _rlsInitializer.HasContext)
+		if (_rlsInitializer != null && _rlsInitializer.HasContext && !_rlsSuppressed.Value)
 		{
 			await _rlsInitializer.InitializeSessionAsync(connection.GetUnderlyingConnection());
 		}
@@ -2375,6 +2422,50 @@ public class DbService : IDbService
 		}
 
 		return CreateAdvisoryLockScopeInternalAsync(currentCtx, shouldDispose, lockKey);
+	}
+
+	/// <inheritdoc/>
+	public void EnableRls()
+	{
+		_rlsSuppressed.Value = false;
+		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
+		if (npgsqlConn != null)
+		{
+			_rlsInitializer?.InitializeSession(npgsqlConn);
+		}
+	}
+
+	/// <inheritdoc/>
+	public async Task EnableRlsAsync()
+	{
+		_rlsSuppressed.Value = false;
+		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
+		if (npgsqlConn != null && _rlsInitializer != null)
+		{
+			await _rlsInitializer.InitializeSessionAsync(npgsqlConn);
+		}
+	}
+
+	/// <inheritdoc/>
+	public void DisableRls()
+	{
+		_rlsSuppressed.Value = true;
+		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
+		if (npgsqlConn != null)
+		{
+			_rlsInitializer?.ResetSession(npgsqlConn);
+		}
+	}
+
+	/// <inheritdoc/>
+	public async Task DisableRlsAsync()
+	{
+		_rlsSuppressed.Value = true;
+		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
+		if (npgsqlConn != null && _rlsInitializer != null)
+		{
+			await _rlsInitializer.ResetSessionAsync(npgsqlConn);
+		}
 	}
 
 	#endregion
