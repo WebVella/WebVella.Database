@@ -1,4 +1,8 @@
-﻿namespace WebVella.Database.Migrations;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using WebVella.Database.Security;
+
+namespace WebVella.Database.Migrations;
 
 /// <summary>
 /// Service interface for managing database migrations.
@@ -49,6 +53,7 @@ public class DbMigrationService : IDbMigrationService
 	private readonly string _versionTableName;
 	private readonly string _updateFunctionName;
 	private readonly string _updateLogTableName;
+	private readonly RlsOptions? _rlsOptions;
 
 	#region <=== SQL Templates ===>
 
@@ -106,6 +111,12 @@ public class DbMigrationService : IDbMigrationService
 		_versionTableName = options.VersionTableName ?? DbMigrationOptions.DefaultVersionTableName;
 		_updateFunctionName = options.UpdateFunctionName ?? DbMigrationOptions.DefaultUpdateFunctionName;
 		_updateLogTableName = options.UpdateLogTableName ?? DbMigrationOptions.DefaultUpdateLogTableName;
+
+		var rlsSection = serviceProvider.GetService<IConfiguration>()?.GetSection(RlsOptions.DefaultSectionName);
+		var sqlUser = rlsSection?["SqlUser"];
+		var sqlPassword = rlsSection?["SqlPassword"];
+		if (!string.IsNullOrWhiteSpace(sqlUser) && !string.IsNullOrWhiteSpace(sqlPassword))
+			_rlsOptions = new RlsOptions { SqlUser = sqlUser, SqlPassword = sqlPassword };
 	}
 
 	/// <inheritdoc />
@@ -129,6 +140,7 @@ public class DbMigrationService : IDbMigrationService
 			foreach (var migration in pendingMigrations)
 			{
 				await _db.ExecuteAsync($"TRUNCATE TABLE {_updateLogTableName};");
+				if (_rlsOptions != null) await _db.EnsureGlobalRlsPermissionsAsync(_rlsOptions);
 				await migration.Instance.PreMigrateAsync(_serviceProvider);
 				var rawSql = await migration.Instance.GenerateSqlAsync(_serviceProvider);
 
@@ -169,12 +181,14 @@ public class DbMigrationService : IDbMigrationService
 						}
 					}
 				}
+				if (_rlsOptions != null) await _db.EnsureGlobalRlsPermissionsAsync(_rlsOptions);
 				await migration.Instance.PostMigrateAsync(_serviceProvider);
 				await UpdateDbVersionAsync(migration.Version);
 			}
 
 			await CleanupMigrationArtifactsAsync();
 			await scope.CompleteAsync();
+			if (_rlsOptions != null) await _db.EnsureGlobalRlsPermissionsAsync(_rlsOptions);
 		}
 		catch (Exception ex)
 		{

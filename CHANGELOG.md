@@ -1,5 +1,18 @@
 # WebVella.Database Changelog
 
+## [1.3.1] - 2026-06-02
+
+### ✨ New Features
+- **`ConnectionString` property**: Added `string ConnectionString { get; }` to `IDbService` — exposes the
+  PostgreSQL connection string used by the service instance, useful for creating secondary connections or
+  passing the connection string to lower-level components without re-injecting configuration
+- **Runtime RLS Enable / Disable**: Added `EnableRls()` / `EnableRlsAsync()` and `DisableRls()` /
+  `DisableRlsAsync()` methods to `IDbService`. `DisableRls` resets all RLS session variables to empty
+  strings for subsequent queries in the current async context; `EnableRls` re-applies them. When called
+  inside a transaction scope the change takes effect on the active transaction connection immediately
+
+---
+
 ## [1.3.0] - 2026-06-01
 
 ### 💥 Breaking Changes

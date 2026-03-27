@@ -1,4 +1,6 @@
 using FluentAssertions;
+using WebVella.Database;
+using WebVella.Database.Security;
 using WebVella.Database.Tests.Fixtures;
 using WebVella.Database.Tests.Models;
 using Xunit;
@@ -20,7 +22,11 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 		_dbService = fixture.DbService;
 	}
 
-	public Task InitializeAsync() => _fixture.ClearTestProductsAsync();
+	public async Task InitializeAsync()
+	{
+		await _fixture.ClearTestProductsAsync();
+		await _fixture.ClearTestRlsItemsAsync();
+	}
 
 	public Task DisposeAsync() => Task.CompletedTask;
 
@@ -1740,12 +1746,12 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 	[Fact]
 	public async Task InsertAsync_WithAllEnumValues_ShouldPersistCorrectly()
 	{
-		var statuses = new[] 
-		{ 
-			ProductStatus.Draft, 
-			ProductStatus.Active, 
-			ProductStatus.Discontinued, 
-			ProductStatus.OutOfStock 
+		var statuses = new[]
+		{
+			ProductStatus.Draft,
+			ProductStatus.Active,
+			ProductStatus.Discontinued,
+			ProductStatus.OutOfStock
 		};
 
 		foreach (var status in statuses)
@@ -3134,6 +3140,253 @@ public class DbServiceIntegrationTests : IAsyncLifetime
 		var updated = await _dbService.UpdateAsync<TestProduct>(updateObj);
 
 		updated.Should().BeFalse();
+	}
+
+	#endregion
+
+	#region <=== RLS Integration Tests ===>
+
+	[Fact]
+	public async Task RlsSelect_WithMultipleEntityIds_ShouldReturnOnlyOwnRows()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		await _dbService.ExecuteAsync(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+			new { OwnerId = user1Id, Name = "User1 Item 1", Value = 10 });
+		await _dbService.ExecuteAsync(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+			new { OwnerId = user1Id, Name = "User1 Item 2", Value = 20 });
+		await _dbService.ExecuteAsync(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+			new { OwnerId = user2Id, Name = "User2 Item 1", Value = 30 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+		var user2Service = CreateRlsDbService(user2Id);
+
+		var user1Items = await user1Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var user2Items = await user2Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+
+		user1Items.Should().HaveCount(2);
+		user1Items.Should().OnlyContain(i => i.OwnerId == user1Id);
+
+		user2Items.Should().HaveCount(1);
+		user2Items.Should().OnlyContain(i => i.OwnerId == user2Id);
+	}
+
+	[Fact]
+	public async Task RlsGetAsync_ShouldReturnNullForOtherUsersItems()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		var item1Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user1Id, Name = "User1 Item", Value = 10 });
+		var item2Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user2Id, Name = "User2 Item", Value = 20 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+		var user2Service = CreateRlsDbService(user2Id);
+
+		var user1OwnItem = await user1Service.GetAsync<TestRlsItem>(item1Id);
+		var user1ForeignItem = await user1Service.GetAsync<TestRlsItem>(item2Id);
+		var user2OwnItem = await user2Service.GetAsync<TestRlsItem>(item2Id);
+		var user2ForeignItem = await user2Service.GetAsync<TestRlsItem>(item1Id);
+
+		user1OwnItem.Should().NotBeNull();
+		user1OwnItem!.OwnerId.Should().Be(user1Id);
+		user1ForeignItem.Should().BeNull();
+
+		user2OwnItem.Should().NotBeNull();
+		user2OwnItem!.OwnerId.Should().Be(user2Id);
+		user2ForeignItem.Should().BeNull();
+	}
+
+	[Fact]
+	public async Task RlsInsertAsync_ShouldOnlyBeVisibleToInsertingUser()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		var user1Service = CreateRlsDbService(user1Id);
+		var user2Service = CreateRlsDbService(user2Id);
+
+		var item = new TestRlsItem { OwnerId = user1Id, Name = "User1 New Item", Value = 100 };
+		var inserted = await user1Service.InsertAsync(item);
+
+		var user1Items = await user1Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var user2Items = await user2Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var allItems = await _dbService.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+
+		inserted.Id.Should().NotBe(Guid.Empty);
+		user1Items.Should().HaveCount(1).And.OnlyContain(i => i.OwnerId == user1Id);
+		user2Items.Should().BeEmpty();
+		allItems.Should().HaveCount(1);
+	}
+
+	[Fact]
+	public async Task RlsUpdateAsync_ShouldOnlyUpdateOwnRows()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		var item1Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user1Id, Name = "User1 Item", Value = 10 });
+		var item2Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user2Id, Name = "User2 Item", Value = 20 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+
+		var ownItem = new TestRlsItem { Id = item1Id, OwnerId = user1Id, Name = "User1 Updated", Value = 99 };
+		var foreignItem = new TestRlsItem
+		{
+			Id = item2Id,
+			OwnerId = user2Id,
+			Name = "User2 Tampered",
+			Value = 999
+		};
+
+		var ownUpdated = await user1Service.UpdateAsync(ownItem);
+		var foreignUpdated = await user1Service.UpdateAsync(foreignItem);
+
+		ownUpdated.Should().BeTrue();
+		foreignUpdated.Should().BeFalse();
+
+		var item1Result = await _dbService.QueryAsync<TestRlsItem>(
+			"SELECT * FROM test_rls_items WHERE id = @Id", new { Id = item1Id });
+		var item2Result = await _dbService.QueryAsync<TestRlsItem>(
+			"SELECT * FROM test_rls_items WHERE id = @Id", new { Id = item2Id });
+
+		item1Result.First().Name.Should().Be("User1 Updated");
+		item2Result.First().Name.Should().Be("User2 Item");
+	}
+
+	[Fact]
+	public async Task RlsDeleteAsync_ShouldOnlyDeleteOwnRows()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		var item1Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user1Id, Name = "User1 Item", Value = 10 });
+		var item2Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user2Id, Name = "User2 Item", Value = 20 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+
+		var foreignItem = new TestRlsItem { Id = item2Id, OwnerId = user2Id, Name = "User2 Item" };
+		var ownItem = new TestRlsItem { Id = item1Id, OwnerId = user1Id, Name = "User1 Item" };
+
+		var ownDeleted = await user1Service.DeleteAsync(ownItem);
+		var foreignDeleted = await user1Service.DeleteAsync(foreignItem);
+
+		foreignDeleted.Should().BeFalse();
+		ownDeleted.Should().BeTrue();
+
+		var remainingItems = await _dbService.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		remainingItems.Should().HaveCount(1);
+		remainingItems.First().OwnerId.Should().Be(user2Id);
+	}
+
+	[Fact]
+	public async Task RlsGetListAsync_ShouldNotReturnOtherUsersItems()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+
+		var item1Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user1Id, Name = "User1 Item", Value = 10 });
+		var item2Id = await _dbService.ExecuteScalarAsync<Guid>(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value) RETURNING id",
+			new { OwnerId = user2Id, Name = "User2 Item", Value = 20 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+
+		var ownList = await user1Service.GetListAsync<TestRlsItem>(new List<Guid> { item1Id });
+		var foreignList = await user1Service.GetListAsync<TestRlsItem>(new List<Guid> { item2Id });
+		var mixedList = await user1Service.GetListAsync<TestRlsItem>(
+			new List<Guid> { item1Id, item2Id });
+
+		ownList.Should().HaveCount(1).And.OnlyContain(i => i.OwnerId == user1Id);
+		foreignList.Should().BeEmpty();
+		mixedList.Should().HaveCount(1).And.OnlyContain(i => i.OwnerId == user1Id);
+	}
+
+	[Fact]
+	public async Task RlsIsolation_ThreeEntityIds_ShouldBeCompletelyIsolated()
+	{
+		var user1Id = Guid.NewGuid();
+		var user2Id = Guid.NewGuid();
+		var user3Id = Guid.NewGuid();
+
+		for (var i = 1; i <= 2; i++)
+			await _dbService.ExecuteAsync(
+				"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+				new { OwnerId = user1Id, Name = $"User1 Item {i}", Value = i * 10 });
+
+		for (var i = 1; i <= 3; i++)
+			await _dbService.ExecuteAsync(
+				"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+				new { OwnerId = user2Id, Name = $"User2 Item {i}", Value = i * 10 });
+
+		await _dbService.ExecuteAsync(
+			"INSERT INTO test_rls_items (owner_id, name, value) VALUES (@OwnerId, @Name, @Value)",
+			new { OwnerId = user3Id, Name = "User3 Item 1", Value = 10 });
+
+		var user1Service = CreateRlsDbService(user1Id);
+		var user2Service = CreateRlsDbService(user2Id);
+		var user3Service = CreateRlsDbService(user3Id);
+
+		var user1Items = await user1Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var user2Items = await user2Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var user3Items = await user3Service.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+		var adminItems = await _dbService.QueryAsync<TestRlsItem>("SELECT * FROM test_rls_items");
+
+		user1Items.Should().HaveCount(2).And.OnlyContain(i => i.OwnerId == user1Id);
+		user2Items.Should().HaveCount(3).And.OnlyContain(i => i.OwnerId == user2Id);
+		user3Items.Should().HaveCount(1).And.OnlyContain(i => i.OwnerId == user3Id);
+		adminItems.Should().HaveCount(6);
+	}
+
+	#endregion
+
+	#region <=== Test Helpers ===>
+
+	private IDbService CreateRlsDbService(Guid userId) =>
+		new DbService(_fixture.ConnectionString, NullDbEntityCache.Instance,
+			new RlsContextProvider(userId), _fixture.RlsOptions);
+
+	[Table("test_rls_items")]
+	private sealed class TestRlsItem
+	{
+		[Key]
+		public Guid Id { get; set; }
+		public Guid OwnerId { get; set; }
+		public string Name { get; set; } = string.Empty;
+		public int Value { get; set; }
+	}
+
+	private sealed class AdminRlsContextProvider : IRlsContextProvider
+	{
+		public string? EntityId => string.Empty;
+		public IReadOnlyDictionary<string, string> CustomClaims { get; } =
+			new Dictionary<string, string>();
+	}
+
+	private sealed class RlsContextProvider : IRlsContextProvider
+	{
+		public RlsContextProvider(Guid entityId) => EntityId = entityId.ToString();
+		public string? EntityId { get; }
+		public IReadOnlyDictionary<string, string> CustomClaims { get; } =
+			new Dictionary<string, string>();
 	}
 
 	#endregion

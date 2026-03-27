@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using WebVella.Database.Security;
 using WebVella.Database.Tests.Models;
 using Xunit;
 
@@ -14,6 +15,8 @@ public class DatabaseFixture : IAsyncLifetime
 	public IServiceProvider ServiceProvider { get; private set; } = null!;
 	public IDbService DbService { get; private set; } = null!;
 	public IConfiguration Configuration { get; private set; } = null!;
+	public RlsOptions RlsOptions { get; private set; } = null!;
+	public string ConnectionString { get; private set; } = null!;
 
 	public async Task InitializeAsync()
 	{
@@ -25,6 +28,10 @@ public class DatabaseFixture : IAsyncLifetime
 
 		var connectionString = Configuration.GetConnectionString("DefaultConnection")
 			?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found in appsettings.json");
+
+		ConnectionString = connectionString;
+
+		RlsOptions = Configuration.GetSection("RlsOptions").Get<RlsOptions>() ?? new RlsOptions();
 
 		// Setup dependency injection using the extension method
 		var services = new ServiceCollection();
@@ -38,6 +45,8 @@ public class DatabaseFixture : IAsyncLifetime
 
 		// Create test tables
 		await CreateTestTablesAsync();
+
+		await DbService.EnsureGlobalRlsPermissionsAsync(RlsOptions);
 	}
 
 	public async Task DisposeAsync()
@@ -142,6 +151,28 @@ public class DatabaseFixture : IAsyncLifetime
 			""";
 
 		await DbService.ExecuteAsync(createTableSql);
+
+		const string createRlsTableSql = """
+			DROP TABLE IF EXISTS test_rls_items CASCADE;
+			CREATE TABLE test_rls_items (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				owner_id UUID NOT NULL,
+				name VARCHAR(255) NOT NULL,
+				value INTEGER NOT NULL DEFAULT 0
+			);
+			ALTER TABLE test_rls_items ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE test_rls_items FORCE ROW LEVEL SECURITY;
+			CREATE POLICY test_rls_items_policy ON test_rls_items
+				USING (
+					COALESCE(current_setting('app.user_id', true), '') = '' OR
+					owner_id = NULLIF(COALESCE(current_setting('app.user_id', true), ''), '')::UUID
+				)
+				WITH CHECK (
+					COALESCE(current_setting('app.user_id', true), '') = '' OR
+					owner_id = NULLIF(COALESCE(current_setting('app.user_id', true), ''), '')::UUID
+				);
+			""";
+		await DbService.ExecuteAsync(createRlsTableSql);
 	}
 
 	/// <summary>
@@ -157,6 +188,7 @@ public class DatabaseFixture : IAsyncLifetime
 			DROP TABLE IF EXISTS test_order_items CASCADE;
 			DROP TABLE IF EXISTS test_cacheable_products CASCADE;
 			DROP TABLE IF EXISTS test_db_column_entities CASCADE;
+			DROP TABLE IF EXISTS test_rls_items CASCADE;
 			""";
 		await DbService.ExecuteAsync(dropTableSql);
 	}
@@ -167,6 +199,14 @@ public class DatabaseFixture : IAsyncLifetime
 	public async Task ClearTestProductsAsync()
 	{
 		await DbService.ExecuteAsync("TRUNCATE TABLE test_products;");
+	}
+
+	/// <summary>
+	/// Clears all data from the test_rls_items table.
+	/// </summary>
+	public async Task ClearTestRlsItemsAsync()
+	{
+		await DbService.ExecuteAsync("TRUNCATE TABLE test_rls_items;");
 	}
 
 	/// <summary>

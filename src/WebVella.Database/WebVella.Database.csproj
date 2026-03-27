@@ -10,7 +10,7 @@
 		<PackageId>$(AssemblyName)</PackageId>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<Description>A lightweight, high-performance Postgres data access library built on Dapper with nested transactions, advisory locks, RLS, and migrations. Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md</Description>
-		<Version>1.3.0</Version>
+		<Version>1.3.1</Version>
 		<Authors>WebVella</Authors>
 		<Company>WebVella</Company>
 		<Copyright>WebVella 2026</Copyright>
@@ -22,7 +22,7 @@
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<Title>WebVella.Database</Title>
 		<PackageTags>postgres;postgresql;dapper;transactions;advisory-locks;rls;migrations;database;nested-transactions</PackageTags>
-		<PackageReleaseNotes>v1.2.2: Added Insert and Update overloads accepting anonymous objects with property mapping and type validation. Partial update support for object-based updates. Documentation file renames for clarity.</PackageReleaseNotes>
+		<PackageReleaseNotes>v1.3.1: Added ConnectionString property to IDbService. Added EnableRls/DisableRls (and async variants) to IDbService for runtime RLS suppression within the current async context.</PackageReleaseNotes>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 
 		<!-- Enhanced XML Documentation -->
@@ -72,6 +72,7 @@
 		<PackageReference Include="Dapper" Version="2.1.72" />
 		<PackageReference Include="Npgsql" Version="10.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
 
 		<!-- Source Link support -->

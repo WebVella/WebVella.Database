@@ -94,13 +94,22 @@ internal class DbConnectionContext : IDisposable, IAsyncDisposable
 		this._transaction = transaction;
 	}
 
-    /// <summary>
-    /// Leaves the transactional state and clears the current transaction.
-    /// </summary>
+	/// <summary>
+	/// Leaves the transactional state and clears the current transaction.
+	/// </summary>
 	internal void LeaveTransactionalState()
 	{
 		this._transaction = null;
 	}
+
+	/// <summary>
+	/// Gets the underlying <see cref="NpgsqlConnection"/> from the active transaction, if any.
+	/// </summary>
+	/// <returns>
+	/// The <see cref="NpgsqlConnection"/> used by the current transaction,
+	/// or <c>null</c> if no transaction is active.
+	/// </returns>
+	internal NpgsqlConnection? GetTransactionConnection() => _transaction?.Connection;
 
 	/// <summary>
 	/// Creates a new <see cref="DbConnectionContext"/> with the specified connection string.

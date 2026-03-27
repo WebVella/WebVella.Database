@@ -5,6 +5,8 @@ namespace WebVella.Database.Security;
 /// </summary>
 public class RlsOptions
 {
+	internal static string DefaultSectionName = "RlsOptions";
+
 	/// <summary>
 	/// Gets or sets the full PostgreSQL session variable name used for the RLS entity identifier.
 	/// Default is "app.user_id".
@@ -37,4 +39,24 @@ public class RlsOptions
 	/// is registered. This can be useful for bypassing RLS in administrative scenarios.
 	/// </remarks>
 	public bool Enabled { get; set; } = true;
+
+	/// <summary>
+	/// Gets or sets the PostgreSQL username to use for RLS-enabled connections.
+	/// Required when <see cref="Enabled"/> is <c>true</c>.
+	/// </summary>
+	/// <remarks>
+	/// When <see cref="Enabled"/> is <c>true</c>, the default connection string's username
+	/// is replaced with this value so that RLS policies apply to the correct database role.
+	/// </remarks>
+	public string? SqlUser { get; set; }
+
+	/// <summary>
+	/// Gets or sets the PostgreSQL password to use for RLS-enabled connections.
+	/// Required when <see cref="Enabled"/> is <c>true</c>.
+	/// </summary>
+	/// <remarks>
+	/// When <see cref="Enabled"/> is <c>true</c>, the default connection string's password
+	/// is replaced with this value so that RLS policies apply to the correct database role.
+	/// </remarks>
+	public string? SqlPassword { get; set; }
 }

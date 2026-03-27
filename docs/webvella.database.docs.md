@@ -2035,6 +2035,35 @@ public class EnableRowLevelSecurity : DbMigration
 }
 ```
 
+### Temporarily Disabling RLS
+
+Use `DisableRls` / `EnableRls` (and their async counterparts) when you need to run queries without RLS
+restrictions inside the same service instance — for example, during admin operations or background jobs
+that run in a context where an `IRlsContextProvider` is registered but should be bypassed for a specific
+block of code.
+
+```csharp
+// Temporarily bypass RLS for an admin lookup
+await db.DisableRlsAsync();
+try
+{
+    var allOrders = await db.GetListAsync<Order>();
+}
+finally
+{
+    await db.EnableRlsAsync();
+}
+```
+
+When called inside an active transaction scope the change applies to the transaction connection
+immediately. For connections created after the call, RLS is suppressed (or restored) for the remainder
+of the current async context.
+
+> **Note**: This is a low-level escape hatch. Prefer dedicated admin service instances
+> (`NullRlsContextProvider` or a separate `DbService` registration) where possible.
+
+---
+
 ### Best Practices for RLS
 
 1. **Always use `current_setting(name, true)`** - The second parameter returns NULL instead of throwing an error when the variable is not set
@@ -2581,6 +2610,11 @@ catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
 | `CreateTransactionScopeAsync` | Async versions (3 overloads) |
 | `CreateAdvisoryLockScope` | Create lock scope without transaction |
 | `CreateAdvisoryLockScopeAsync` | Async version |
+| `ConnectionString` | Get the PostgreSQL connection string used by this service instance |
+| `EnableRls` | Re-apply RLS session variables on the current connection/context |
+| `EnableRlsAsync` | Async version of EnableRls |
+| `DisableRls` | Reset RLS session variables to empty strings for the current async context |
+| `DisableRlsAsync` | Async version of DisableRls |
 
 ### DbQuery\<T\> Builder
 
@@ -2696,6 +2730,26 @@ as the single-child builder, with `ChildSelector1`/`ChildSelector2` and
 ---
 
 ## Version History
+
+### v1.3.1
+- **`ConnectionString` property**: Added `string ConnectionString { get; }` to `IDbService` — exposes the
+  PostgreSQL connection string used by the service instance
+- **Runtime RLS Enable / Disable**: Added `EnableRls()` / `EnableRlsAsync()` and `DisableRls()` /
+  `DisableRlsAsync()` to `IDbService` for temporarily suppressing or restoring RLS session variable
+  injection within the current async context; when inside a transaction the change applies to the
+  active connection immediately
+
+---
+
+### v1.3.0
+- **Breaking**: `IRlsContextProvider` simplified — `Guid? TenantId` and `Guid? UserId` replaced with
+  `string? EntityId` as the single primary RLS identifier
+- **Breaking**: `RlsOptions.Prefix` renamed to `SettingName`; now holds the full PostgreSQL session
+  variable name (default `"app.user_id"`); custom-claim namespace is derived from the part before the
+  first dot
+- **Breaking**: RLS cache key format changed from `t:<guid>|u:<guid>` to `e:<value>`
+
+---
 
 ### v1.2.4
 - **SQL-Free Fluent Builders for QueryMultipleList and QueryWithJoin**: Added expression-based

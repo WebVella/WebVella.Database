@@ -1,3 +1,5 @@
+using WebVella.Database.Security;
+
 namespace WebVella.Database;
 
 /// <summary>
@@ -14,25 +16,25 @@ namespace WebVella.Database;
 /// <item>🚀 <strong>Database Migrations</strong>: Version-controlled schema changes</item>
 /// <item>🎯 <strong>JSON Columns</strong>: Automatic serialization/deserialization</item>
 /// </list>
-/// 
+///
 /// <para><strong>Quick Start:</strong></para>
 /// <code>
 /// // Registration
 /// builder.Services.AddWebVellaDatabase(connectionString);
-/// 
+///
 /// // Basic CRUD
 /// var user = await dbService.GetAsync&lt;User&gt;(userId);
 /// var newUser = await dbService.InsertAsync(new User { Name = "John" });
 /// await dbService.UpdateAsync(user);
 /// await dbService.DeleteAsync&lt;User&gt;(userId);
-/// 
+///
 /// // Transactions with automatic nesting
 /// await using var scope = await dbService.CreateTransactionScopeAsync();
 /// await dbService.InsertAsync(user);
 /// await dbService.InsertAsync(order);
 /// await scope.CompleteAsync();
 /// </code>
-/// 
+///
 /// <para>For complete documentation and examples, visit: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md</para>
 /// </remarks>
 /// <example>
@@ -41,12 +43,12 @@ namespace WebVella.Database;
 /// public class UserService
 /// {
 ///     private readonly IDbService _db;
-///     
+///
 ///     public UserService(IDbService db) => _db = db;
-///     
+///
 ///     public async Task&lt;User&gt; CreateUserAsync(User user) => await _db.InsertAsync(user);
 ///     public async Task&lt;User?&gt; GetUserAsync(Guid id) => await _db.GetAsync&lt;User&gt;(id);
-///     public async Task&lt;IEnumerable&lt;User&gt;&gt; GetActiveUsersAsync() => 
+///     public async Task&lt;IEnumerable&lt;User&gt;&gt; GetActiveUsersAsync() =>
 ///         await _db.QueryAsync&lt;User&gt;("SELECT * FROM users WHERE is_active = true");
 ///     public async Task&lt;bool&gt; UpdateUserAsync(User user) => await _db.UpdateAsync(user);
 ///     public async Task&lt;bool&gt; DeleteUserAsync(Guid id) => await _db.DeleteAsync&lt;User&gt;(id);
@@ -315,53 +317,53 @@ public interface IDbService
 
 	#region <=== Insert ===>
 
-		/// <summary>
-		/// Inserts an entity into the database and returns the inserted entity with generated values.
-		/// The key properties (marked with [Key]) will be populated via RETURNING.
-		/// </summary>
-		/// <typeparam name="T">The entity type.</typeparam>
-		/// <param name="entity">The entity to insert.</param>
-		/// <returns>The inserted entity with generated key values populated.</returns>
-		T Insert<T>(T entity) where T : class;
+	/// <summary>
+	/// Inserts an entity into the database and returns the inserted entity with generated values.
+	/// The key properties (marked with [Key]) will be populated via RETURNING.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="entity">The entity to insert.</param>
+	/// <returns>The inserted entity with generated key values populated.</returns>
+	T Insert<T>(T entity) where T : class;
 
-		/// <summary>
-		/// Asynchronously inserts an entity into the database and returns the inserted entity with
-		/// generated values. The key properties (marked with [Key]) will be populated via RETURNING.
-		/// </summary>
-		/// <typeparam name="T">The entity type.</typeparam>
-		/// <param name="entity">The entity to insert.</param>
-		/// <returns>The inserted entity with generated key values populated.</returns>
-		Task<T> InsertAsync<T>(T entity) where T : class;
+	/// <summary>
+	/// Asynchronously inserts an entity into the database and returns the inserted entity with
+	/// generated values. The key properties (marked with [Key]) will be populated via RETURNING.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="entity">The entity to insert.</param>
+	/// <returns>The inserted entity with generated key values populated.</returns>
+	Task<T> InsertAsync<T>(T entity) where T : class;
 
-		/// <summary>
-		/// Inserts a new entity by mapping properties from an anonymous object or any object instance
-		/// to the entity type <typeparamref name="T"/>. Only properties with matching names are mapped.
-		/// Property types must match exactly. Throws if the object contains properties not found on
-		/// the entity type.
-		/// </summary>
-		/// <typeparam name="T">The entity type.</typeparam>
-		/// <param name="obj">
-		/// An anonymous object, class, or record whose properties will be mapped to the entity.
-		/// All properties must exist on the entity type.
-		/// </param>
-		/// <returns>The inserted entity with generated key values populated.</returns>
-		T Insert<T>(object obj) where T : class, new();
+	/// <summary>
+	/// Inserts a new entity by mapping properties from an anonymous object or any object instance
+	/// to the entity type <typeparamref name="T"/>. Only properties with matching names are mapped.
+	/// Property types must match exactly. Throws if the object contains properties not found on
+	/// the entity type.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="obj">
+	/// An anonymous object, class, or record whose properties will be mapped to the entity.
+	/// All properties must exist on the entity type.
+	/// </param>
+	/// <returns>The inserted entity with generated key values populated.</returns>
+	T Insert<T>(object obj) where T : class, new();
 
-		/// <summary>
-		/// Asynchronously inserts a new entity by mapping properties from an anonymous object or any
-		/// object instance to the entity type <typeparamref name="T"/>. Only properties with matching
-		/// names are mapped. Property types must match exactly. Throws if the object contains
-		/// properties not found on the entity type.
-		/// </summary>
-		/// <typeparam name="T">The entity type.</typeparam>
-		/// <param name="obj">
-		/// An anonymous object, class, or record whose properties will be mapped to the entity.
-		/// All properties must exist on the entity type.
-		/// </param>
-		/// <returns>The inserted entity with generated key values populated.</returns>
-		Task<T> InsertAsync<T>(object obj) where T : class, new();
+	/// <summary>
+	/// Asynchronously inserts a new entity by mapping properties from an anonymous object or any
+	/// object instance to the entity type <typeparamref name="T"/>. Only properties with matching
+	/// names are mapped. Property types must match exactly. Throws if the object contains
+	/// properties not found on the entity type.
+	/// </summary>
+	/// <typeparam name="T">The entity type.</typeparam>
+	/// <param name="obj">
+	/// An anonymous object, class, or record whose properties will be mapped to the entity.
+	/// All properties must exist on the entity type.
+	/// </param>
+	/// <returns>The inserted entity with generated key values populated.</returns>
+	Task<T> InsertAsync<T>(object obj) where T : class, new();
 
-		#endregion
+	#endregion
 
 	#region <=== Update ===>
 
@@ -612,7 +614,7 @@ public interface IDbService
 
 	#endregion
 
-	#region <=== DbQuery ===>                                         
+	#region <=== DbQuery ===>
 
 	/// <summary>
 	/// Creates a new fluent, expression-based query builder for <typeparamref name="T"/>.
@@ -850,6 +852,22 @@ public interface IDbService
 	/// <returns>A task representing the asynchronous operation.</returns>
 	Task DisableRlsAsync();
 
+	/// <summary>
+	/// Ensures the PostgreSQL role defined in <see cref="Security.RlsOptions.SqlUser"/> exists
+	/// with the password from <see cref="Security.RlsOptions.SqlPassword"/> and holds full
+	/// privileges on all current and future objects in the public schema, with
+	/// <c>NOBYPASSRLS</c> enforced so that row-level security policies always apply.
+	/// Creates the role when it does not exist; updates its password when it already exists.
+	/// </summary>
+	/// <remarks>
+	/// This is a no-op when <see cref="Security.RlsOptions.SqlUser"/> or
+	/// <see cref="Security.RlsOptions.SqlPassword"/> are not configured.
+	/// The method always executes using the original admin connection string, not the
+	/// RLS-user connection string, so it requires admin privileges.
+	/// </remarks>
+	/// <returns>A task representing the asynchronous operation.</returns>
+	Task EnsureGlobalRlsPermissionsAsync(RlsOptions rlsOptions);
+
 	#endregion
 }
 
@@ -860,8 +878,9 @@ public interface IDbService
 public class DbService : IDbService
 {
 	private readonly string _connectionString;
+	private readonly string _adminConnectionString;
+	private readonly Security.RlsOptions? _rlsOptions;
 	private readonly IDbEntityCache _cache;
-	private readonly Security.RlsSessionInitializer? _rlsInitializer;
 	private readonly Security.IRlsContextProvider? _rlsContextProvider;
 	private readonly AsyncLocal<bool> _rlsSuppressed = new();
 
@@ -899,19 +918,30 @@ public class DbService : IDbService
 		Security.IRlsContextProvider? rlsContextProvider,
 		Security.RlsOptions? rlsOptions)
 	{
-		_connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-		_cache = cache ?? throw new ArgumentNullException(nameof(cache));
-		_rlsContextProvider = rlsContextProvider;
+		ArgumentNullException.ThrowIfNull(connectionString);
+		ArgumentNullException.ThrowIfNull(cache);
 
-		if (rlsContextProvider != null)
+		var options = rlsOptions ?? new Security.RlsOptions();
+		_adminConnectionString = connectionString;
+		_rlsOptions = options;
+
+		if (rlsContextProvider != null && options.Enabled
+			&& (!string.IsNullOrWhiteSpace(options.SqlUser) || !string.IsNullOrWhiteSpace(options.SqlPassword)))
 		{
-			_rlsInitializer = new Security.RlsSessionInitializer(
-				rlsContextProvider,
-				rlsOptions ?? new Security.RlsOptions());
+			var builder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+			if (!string.IsNullOrWhiteSpace(options.SqlUser))
+				builder.Username = options.SqlUser;
+			if (!string.IsNullOrWhiteSpace(options.SqlPassword))
+				builder.Password = options.SqlPassword;
+			connectionString = builder.ConnectionString;
 		}
+
+		_connectionString = connectionString;
+		_cache = cache;
+		_rlsContextProvider = rlsContextProvider;
 	}
 
-	#region <=== DbQuery ===>                                         
+	#region <=== DbQuery ===>
 
 	/// <inheritdoc/>
 	public DbQuery<T> Query<T>() where T : class => new DbQuery<T>(this);
@@ -953,9 +983,9 @@ public class DbService : IDbService
 	public IEnumerable<T> Query<T>(string sql, object? parameters = null) where T : class
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var result = npgsqlConn.Query<T>(sql, parameters, transaction: null);
+		var result = dapperConn.Query<T>(sql, parameters, transaction: null);
 		return result;
 	}
 
@@ -963,9 +993,9 @@ public class DbService : IDbService
 	public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? parameters = null) where T : class
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var result = await npgsqlConn.QueryAsync<T>(sql, parameters, transaction: null);
+		var result = await dapperConn.QueryAsync<T>(sql, parameters, transaction: null);
 		return result;
 	}
 
@@ -975,9 +1005,9 @@ public class DbService : IDbService
 		var metadata = MultiQueryMetadata.GetOrCreate<T>();
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		using var multi = npgsqlConn.QueryMultiple(sql, parameters, transaction: null);
+		using var multi = dapperConn.QueryMultiple(sql, parameters, transaction: null);
 
 		var result = new T();
 
@@ -1002,9 +1032,9 @@ public class DbService : IDbService
 		var metadata = MultiQueryMetadata.GetOrCreate<T>();
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		using var multi = await npgsqlConn.QueryMultipleAsync(sql, parameters, transaction: null);
+		using var multi = await dapperConn.QueryMultipleAsync(sql, parameters, transaction: null);
 
 		var result = new T();
 
@@ -1029,9 +1059,9 @@ public class DbService : IDbService
 		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		using var multi = npgsqlConn.QueryMultiple(sql, parameters, transaction: null);
+		using var multi = dapperConn.QueryMultiple(sql, parameters, transaction: null);
 
 		var parents = multi.Read<T>().ToList();
 
@@ -1094,9 +1124,9 @@ public class DbService : IDbService
 		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		using var multi = await npgsqlConn.QueryMultipleAsync(sql, parameters, transaction: null);
+		using var multi = await dapperConn.QueryMultipleAsync(sql, parameters, transaction: null);
 
 		var parents = (await multi.ReadAsync<T>()).ToList();
 
@@ -1164,12 +1194,12 @@ public class DbService : IDbService
 		where TParent : class where TChild : class
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parentLookup = new Dictionary<object, TParent>();
 		var childAdded = new HashSet<(object parentKey, object childKey)>();
 
-		npgsqlConn.Query<TParent, TChild, TParent>(
+		dapperConn.Query<TParent, TChild, TParent>(
 			sql,
 			(parent, child) =>
 			{
@@ -1210,12 +1240,12 @@ public class DbService : IDbService
 		where TParent : class where TChild : class
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parentLookup = new Dictionary<object, TParent>();
 		var childAdded = new HashSet<(object parentKey, object childKey)>();
 
-		await npgsqlConn.QueryAsync<TParent, TChild, TParent>(
+		await dapperConn.QueryAsync<TParent, TChild, TParent>(
 			sql,
 			(parent, child) =>
 			{
@@ -1258,13 +1288,13 @@ public class DbService : IDbService
 		where TParent : class where TChild1 : class where TChild2 : class
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parentLookup = new Dictionary<object, TParent>();
 		var child1Added = new HashSet<(object parentKey, object childKey)>();
 		var child2Added = new HashSet<(object parentKey, object childKey)>();
 
-		npgsqlConn.Query<TParent, TChild1, TChild2, TParent>(
+		dapperConn.Query<TParent, TChild1, TChild2, TParent>(
 			sql,
 			(parent, child1, child2) =>
 			{
@@ -1316,13 +1346,13 @@ public class DbService : IDbService
 		where TParent : class where TChild1 : class where TChild2 : class
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parentLookup = new Dictionary<object, TParent>();
 		var child1Added = new HashSet<(object parentKey, object childKey)>();
 		var child2Added = new HashSet<(object parentKey, object childKey)>();
 
-		await npgsqlConn.QueryAsync<TParent, TChild1, TChild2, TParent>(
+		await dapperConn.QueryAsync<TParent, TChild1, TChild2, TParent>(
 			sql,
 			(parent, child1, child2) =>
 			{
@@ -1369,9 +1399,9 @@ public class DbService : IDbService
 	public int Execute(string sql, object? parameters = null)
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = npgsqlConn.Execute(sql, parameters, transaction: null);
+		var affected = dapperConn.Execute(sql, parameters, transaction: null);
 		return affected;
 	}
 
@@ -1379,9 +1409,9 @@ public class DbService : IDbService
 	public async Task<int> ExecuteAsync(string sql, object? parameters = null)
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = await npgsqlConn.ExecuteAsync(sql, parameters, transaction: null);
+		var affected = await dapperConn.ExecuteAsync(sql, parameters, transaction: null);
 		return affected;
 	}
 
@@ -1389,9 +1419,9 @@ public class DbService : IDbService
 	public IDataReader ExecuteReader(string sql, object? parameters = null)
 	{
 		var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		return npgsqlConn.ExecuteReader(sql, parameters, transaction: null, commandTimeout: null,
+		return dapperConn.ExecuteReader(sql, parameters, transaction: null, commandTimeout: null,
 			commandType: null);
 	}
 
@@ -1399,37 +1429,37 @@ public class DbService : IDbService
 	public async Task<DbDataReader> ExecuteReaderAsync(string sql, object? parameters = null)
 	{
 		var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		return await npgsqlConn.ExecuteReaderAsync(sql, parameters, transaction: null, commandTimeout: null,
-			commandType: null);
+		return (DbDataReader)await dapperConn.ExecuteReaderAsync(sql, parameters, transaction: null,
+			commandTimeout: null, commandType: null);
 	}
 
 	/// <inheritdoc/>
 	public T? ExecuteScalar<T>(string sql, object? parameters = null)
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		return npgsqlConn.ExecuteScalar<T>(sql, parameters, transaction: null);
+		return dapperConn.ExecuteScalar<T>(sql, parameters, transaction: null);
 	}
 
 	/// <inheritdoc/>
 	public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null)
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		return await npgsqlConn.ExecuteScalarAsync<T>(sql, parameters, transaction: null);
+		return await dapperConn.ExecuteScalarAsync<T>(sql, parameters, transaction: null);
 	}
 
 	/// <inheritdoc/>
 	public DataTable GetDataTable(string sql, object? parameters = null)
 	{
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		using var reader = npgsqlConn.ExecuteReader(sql, parameters, transaction: null);
+		using var reader = dapperConn.ExecuteReader(sql, parameters, transaction: null);
 		var dataTable = new DataTable();
 		dataTable.Load(reader);
 		return dataTable;
@@ -1439,9 +1469,10 @@ public class DbService : IDbService
 	public async Task<DataTable> GetDataTableAsync(string sql, object? parameters = null)
 	{
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		await using var reader = await npgsqlConn.ExecuteReaderAsync(sql, parameters, transaction: null);
+		await using var reader = (DbDataReader)await dapperConn.ExecuteReaderAsync(sql, parameters,
+			transaction: null);
 		var dataTable = new DataTable();
 		dataTable.Load(reader);
 		return dataTable;
@@ -1451,119 +1482,119 @@ public class DbService : IDbService
 
 	#region <=== Insert ===>
 
-		/// <inheritdoc/>
-		public T Insert<T>(T entity) where T : class
-		{
-			var metadata = EntityMetadata.GetOrCreate<T>();
+	/// <inheritdoc/>
+	public T Insert<T>(T entity) where T : class
+	{
+		var metadata = EntityMetadata.GetOrCreate<T>();
 
+		foreach (var keyProp in metadata.KeyProperties)
+		{
+			var currentValue = (Guid)keyProp.GetValue(entity)!;
+			if (currentValue == Guid.Empty)
+			{
+				keyProp.SetValue(entity, Guid.NewGuid());
+			}
+		}
+
+		var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
+			$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
+
+		using var conn = CreateConnection();
+		var dapperConn = GetDapperConnection(conn);
+
+		if (metadata.HasSingleKey)
+		{
+			var id = dapperConn.ExecuteScalar<Guid>(sql, entity, transaction: null);
+			metadata.KeyProperties[0].SetValue(entity, id);
+		}
+		else
+		{
+			var row = dapperConn.QueryFirst(sql, entity, transaction: null);
+			var rowDict = (IDictionary<string, object>)row;
 			foreach (var keyProp in metadata.KeyProperties)
 			{
-				var currentValue = (Guid)keyProp.GetValue(entity)!;
-				if (currentValue == Guid.Empty)
+				if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
+					rowDict.TryGetValue(columnName, out var value))
 				{
-					keyProp.SetValue(entity, Guid.NewGuid());
+					keyProp.SetValue(entity, (Guid)value);
 				}
 			}
-
-			var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
-				$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
-
-			using var conn = CreateConnection();
-			var npgsqlConn = conn.GetUnderlyingConnection();
-
-			if (metadata.HasSingleKey)
-			{
-				var id = npgsqlConn.ExecuteScalar<Guid>(sql, entity, transaction: null);
-				metadata.KeyProperties[0].SetValue(entity, id);
-			}
-			else
-			{
-				var row = npgsqlConn.QueryFirst(sql, entity, transaction: null);
-				var rowDict = (IDictionary<string, object>)row;
-				foreach (var keyProp in metadata.KeyProperties)
-				{
-					if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
-						rowDict.TryGetValue(columnName, out var value))
-					{
-						keyProp.SetValue(entity, (Guid)value);
-					}
-				}
-			}
-
-			if (metadata.IsCacheable)
-			{
-				_cache.Invalidate<T>();
-			}
-
-			return entity;
 		}
 
-		/// <inheritdoc/>
-		public async Task<T> InsertAsync<T>(T entity) where T : class
+		if (metadata.IsCacheable)
 		{
-			var metadata = EntityMetadata.GetOrCreate<T>();
+			_cache.Invalidate<T>();
+		}
 
+		return entity;
+	}
+
+	/// <inheritdoc/>
+	public async Task<T> InsertAsync<T>(T entity) where T : class
+	{
+		var metadata = EntityMetadata.GetOrCreate<T>();
+
+		foreach (var keyProp in metadata.KeyProperties)
+		{
+			var currentValue = (Guid)keyProp.GetValue(entity)!;
+			if (currentValue == Guid.Empty)
+			{
+				keyProp.SetValue(entity, Guid.NewGuid());
+			}
+		}
+
+		var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
+			$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
+
+		await using var conn = await CreateConnectionAsync();
+		var dapperConn = GetDapperConnection(conn);
+
+		if (metadata.HasSingleKey)
+		{
+			var id = await dapperConn.ExecuteScalarAsync<Guid>(sql, entity, transaction: null);
+			metadata.KeyProperties[0].SetValue(entity, id);
+		}
+		else
+		{
+			var row = await dapperConn.QueryFirstAsync(sql, entity, transaction: null);
+			var rowDict = (IDictionary<string, object>)row;
 			foreach (var keyProp in metadata.KeyProperties)
 			{
-				var currentValue = (Guid)keyProp.GetValue(entity)!;
-				if (currentValue == Guid.Empty)
+				if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
+					rowDict.TryGetValue(columnName, out var value))
 				{
-					keyProp.SetValue(entity, Guid.NewGuid());
+					keyProp.SetValue(entity, (Guid)value);
 				}
 			}
-
-			var sql = $"INSERT INTO {metadata.TableName} ({metadata.InsertColumns}) " +
-				$"VALUES ({metadata.InsertParameters}) RETURNING {metadata.ReturningColumns}";
-
-			await using var conn = await CreateConnectionAsync();
-			var npgsqlConn = conn.GetUnderlyingConnection();
-
-			if (metadata.HasSingleKey)
-			{
-				var id = await npgsqlConn.ExecuteScalarAsync<Guid>(sql, entity, transaction: null);
-				metadata.KeyProperties[0].SetValue(entity, id);
-			}
-			else
-			{
-				var row = await npgsqlConn.QueryFirstAsync(sql, entity, transaction: null);
-				var rowDict = (IDictionary<string, object>)row;
-				foreach (var keyProp in metadata.KeyProperties)
-				{
-					if (metadata.KeyPropertyColumnNames.TryGetValue(keyProp.Name, out var columnName) &&
-						rowDict.TryGetValue(columnName, out var value))
-					{
-						keyProp.SetValue(entity, (Guid)value);
-					}
-				}
-			}
-
-			if (metadata.IsCacheable)
-			{
-				_cache.Invalidate<T>();
-			}
-
-			return entity;
 		}
 
-		/// <inheritdoc/>
-		public T Insert<T>(object obj) where T : class, new()
+		if (metadata.IsCacheable)
 		{
-			ArgumentNullException.ThrowIfNull(obj);
-			var entity = MapToEntityForInsert<T>(obj);
-			return Insert(entity);
+			_cache.Invalidate<T>();
 		}
 
-		/// <inheritdoc/>
-		public async Task<T> InsertAsync<T>(object obj) where T : class, new()
-		{
-			ArgumentNullException.ThrowIfNull(obj);
-			var entity = MapToEntityForInsert<T>(obj);
-			return await InsertAsync(entity);
-		}
+		return entity;
+	}
 
-		#endregion
+	/// <inheritdoc/>
+	public T Insert<T>(object obj) where T : class, new()
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+		var entity = MapToEntityForInsert<T>(obj);
+		return Insert(entity);
+	}
 
-		#region <=== Update ===>
+	/// <inheritdoc/>
+	public async Task<T> InsertAsync<T>(object obj) where T : class, new()
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+		var entity = MapToEntityForInsert<T>(obj);
+		return await InsertAsync(entity);
+	}
+
+	#endregion
+
+	#region <=== Update ===>
 
 	/// <inheritdoc/>
 	public bool Update<T>(T entity, string[]? propertyNamesUpdateOnly = null) where T : class
@@ -1615,9 +1646,9 @@ public class DbService : IDbService
 		var sql = $"UPDATE {metadata.TableName} SET {setClause} WHERE {metadata.KeyWhereClause}";
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = npgsqlConn.Execute(sql, entity, transaction: null);
+		var affected = dapperConn.Execute(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1677,9 +1708,9 @@ public class DbService : IDbService
 		var sql = $"UPDATE {metadata.TableName} SET {setClause} WHERE {metadata.KeyWhereClause}";
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = await npgsqlConn.ExecuteAsync(sql, entity, transaction: null);
+		var affected = await dapperConn.ExecuteAsync(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1720,9 +1751,9 @@ public class DbService : IDbService
 		var sql = $"DELETE FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = npgsqlConn.Execute(sql, entity, transaction: null);
+		var affected = dapperConn.Execute(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1739,9 +1770,9 @@ public class DbService : IDbService
 		var sql = $"DELETE FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
-		var affected = await npgsqlConn.ExecuteAsync(sql, entity, transaction: null);
+		var affected = await dapperConn.ExecuteAsync(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1812,7 +1843,7 @@ public class DbService : IDbService
 		var sql = $"DELETE FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parameters = new DynamicParameters();
 		foreach (var keyProp in metadata.KeyProperties)
@@ -1820,7 +1851,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var affected = npgsqlConn.Execute(sql, parameters, transaction: null);
+		var affected = dapperConn.Execute(sql, parameters, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1851,7 +1882,7 @@ public class DbService : IDbService
 		var sql = $"DELETE FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parameters = new DynamicParameters();
 		foreach (var keyProp in metadata.KeyProperties)
@@ -1859,7 +1890,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var affected = await npgsqlConn.ExecuteAsync(sql, parameters, transaction: null);
+		var affected = await dapperConn.ExecuteAsync(sql, parameters, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
 		{
@@ -1960,7 +1991,7 @@ public class DbService : IDbService
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parameters = new DynamicParameters();
 		foreach (var keyProp in metadata.KeyProperties)
@@ -1968,7 +1999,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var entity = npgsqlConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
+		var entity = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
 
 		// Cache the result
 		if (metadata.IsCacheable)
@@ -2011,7 +2042,7 @@ public class DbService : IDbService
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var parameters = new DynamicParameters();
 		foreach (var keyProp in metadata.KeyProperties)
@@ -2019,7 +2050,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var entity = await npgsqlConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+		var entity = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
 
 		// Cache the result
 		if (metadata.IsCacheable)
@@ -2067,10 +2098,10 @@ public class DbService : IDbService
 		}
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
-		var entities = npgsqlConn.Query<T>(sql, transaction: null).ToList();
+		var entities = dapperConn.Query<T>(sql, transaction: null).ToList();
 
 		// Cache the result
 		if (metadata.IsCacheable)
@@ -2098,10 +2129,10 @@ public class DbService : IDbService
 		}
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
-		var entities = (await npgsqlConn.QueryAsync<T>(sql, transaction: null)).ToList();
+		var entities = (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
 
 		// Cache the result
 		if (metadata.IsCacheable)
@@ -2134,11 +2165,11 @@ public class DbService : IDbService
 		}
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 			$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
-		var result = npgsqlConn.Query<T>(sql, new { Ids = idList }, transaction: null);
+		var result = dapperConn.Query<T>(sql, new { Ids = idList }, transaction: null);
 		return result;
 	}
 
@@ -2163,11 +2194,11 @@ public class DbService : IDbService
 		}
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 			$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
-		var result = await npgsqlConn.QueryAsync<T>(sql, new { Ids = idList }, transaction: null);
+		var result = await dapperConn.QueryAsync<T>(sql, new { Ids = idList }, transaction: null);
 		return result;
 	}
 
@@ -2199,7 +2230,7 @@ public class DbService : IDbService
 		}
 
 		using var conn = CreateConnection();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		if (metadata.HasSingleKey)
 		{
@@ -2207,7 +2238,7 @@ public class DbService : IDbService
 			var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 				$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
 
-			var entities = npgsqlConn.Query<T>(sql, new { Ids = ids }, transaction: null);
+			var entities = dapperConn.Query<T>(sql, new { Ids = ids }, transaction: null);
 			return entities;
 		}
 		else
@@ -2224,7 +2255,7 @@ public class DbService : IDbService
 					parameters.Add(keyProp.Name, keys[keyProp.Name]);
 				}
 
-				var entity = npgsqlConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
+				var entity = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
 				if (entity != null)
 				{
 					results.Add(entity);
@@ -2262,7 +2293,7 @@ public class DbService : IDbService
 		}
 
 		await using var conn = await CreateConnectionAsync();
-		var npgsqlConn = conn.GetUnderlyingConnection();
+		var dapperConn = GetDapperConnection(conn);
 
 		if (metadata.HasSingleKey)
 		{
@@ -2270,7 +2301,7 @@ public class DbService : IDbService
 			var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 				$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
 
-			var entities = await npgsqlConn.QueryAsync<T>(sql, new { Ids = ids }, transaction: null);
+			var entities = await dapperConn.QueryAsync<T>(sql, new { Ids = ids }, transaction: null);
 			return entities;
 		}
 		else
@@ -2287,7 +2318,7 @@ public class DbService : IDbService
 					parameters.Add(keyProp.Name, keys[keyProp.Name]);
 				}
 
-				var entity = await npgsqlConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+				var entity = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
 				if (entity != null)
 				{
 					results.Add(entity);
@@ -2330,14 +2361,7 @@ public class DbService : IDbService
 			currentCtx = DbConnectionContext.CreateContext(_connectionString);
 		}
 
-		var connection = currentCtx.CreateConnection();
-
-		if (_rlsInitializer != null && _rlsInitializer.HasContext && !_rlsSuppressed.Value)
-		{
-			_rlsInitializer.InitializeSession(connection.GetUnderlyingConnection());
-		}
-
-		return connection;
+		return currentCtx.CreateConnection();
 	}
 
 	/// <inheritdoc/>
@@ -2350,14 +2374,7 @@ public class DbService : IDbService
 			currentCtx = DbConnectionContext.CreateContext(_connectionString);
 		}
 
-		var connection = await currentCtx.CreateConnectionAsync();
-
-		if (_rlsInitializer != null && _rlsInitializer.HasContext && !_rlsSuppressed.Value)
-		{
-			await _rlsInitializer.InitializeSessionAsync(connection.GetUnderlyingConnection());
-		}
-
-		return connection;
+		return await currentCtx.CreateConnectionAsync();
 	}
 
 	/// <inheritdoc/>
@@ -2425,47 +2442,70 @@ public class DbService : IDbService
 	}
 
 	/// <inheritdoc/>
-	public void EnableRls()
+	public void EnableRls() => _rlsSuppressed.Value = false;
+
+	/// <inheritdoc/>
+	public Task EnableRlsAsync()
 	{
 		_rlsSuppressed.Value = false;
-		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
-		if (npgsqlConn != null)
-		{
-			_rlsInitializer?.InitializeSession(npgsqlConn);
-		}
+		return Task.CompletedTask;
 	}
 
 	/// <inheritdoc/>
-	public async Task EnableRlsAsync()
-	{
-		_rlsSuppressed.Value = false;
-		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
-		if (npgsqlConn != null && _rlsInitializer != null)
-		{
-			await _rlsInitializer.InitializeSessionAsync(npgsqlConn);
-		}
-	}
+	public void DisableRls() => _rlsSuppressed.Value = true;
 
 	/// <inheritdoc/>
-	public void DisableRls()
+	public Task DisableRlsAsync()
 	{
 		_rlsSuppressed.Value = true;
-		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
-		if (npgsqlConn != null)
-		{
-			_rlsInitializer?.ResetSession(npgsqlConn);
-		}
+		return Task.CompletedTask;
 	}
 
 	/// <inheritdoc/>
-	public async Task DisableRlsAsync()
+	public async Task EnsureGlobalRlsPermissionsAsync(RlsOptions rlsOptions)
 	{
-		_rlsSuppressed.Value = true;
-		var npgsqlConn = DbConnectionContext.GetCurrentContext()?.GetTransactionConnection();
-		if (npgsqlConn != null && _rlsInitializer != null)
-		{
-			await _rlsInitializer.ResetSessionAsync(npgsqlConn);
-		}
+		ArgumentNullException.ThrowIfNull(rlsOptions);
+
+		if (string.IsNullOrWhiteSpace(rlsOptions?.SqlUser) ||
+			string.IsNullOrWhiteSpace(rlsOptions?.SqlPassword))
+			return;
+
+		var quotedUser = $"\"{rlsOptions.SqlUser.Replace("\"", "\"\"")}\"";
+		var escapedUserLiteral = rlsOptions.SqlUser.Replace("'", "''");
+		var escapedPassword = rlsOptions.SqlPassword.Replace("'", "''");
+
+		await using var adminConn = new Npgsql.NpgsqlConnection(_adminConnectionString);
+		await adminConn.OpenAsync();
+
+		var dbName = (await adminConn.ExecuteScalarAsync<string>("SELECT current_database()"))!;
+		var quotedDb = $"\"{dbName.Replace("\"", "\"\"")}\"";
+
+		await adminConn.ExecuteAsync($@"
+			DO $body$
+			BEGIN
+				IF NOT EXISTS (
+					SELECT FROM pg_catalog.pg_roles WHERE rolname = '{escapedUserLiteral}'
+				) THEN
+					EXECUTE 'CREATE ROLE {quotedUser} WITH LOGIN PASSWORD '
+						|| quote_literal('{escapedPassword}');
+				ELSE
+					EXECUTE 'ALTER ROLE {quotedUser} WITH LOGIN PASSWORD '
+						|| quote_literal('{escapedPassword}');
+				END IF;
+			END
+			$body$;
+			GRANT CONNECT ON DATABASE {quotedDb} TO {quotedUser};
+			GRANT USAGE, CREATE ON SCHEMA public TO {quotedUser};
+			GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {quotedUser};
+			GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {quotedUser};
+			GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO {quotedUser};
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public
+				GRANT ALL PRIVILEGES ON TABLES TO {quotedUser};
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public
+				GRANT ALL PRIVILEGES ON SEQUENCES TO {quotedUser};
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public
+				GRANT ALL PRIVILEGES ON FUNCTIONS TO {quotedUser};
+			ALTER ROLE {quotedUser} NOBYPASSRLS;");
 	}
 
 	#endregion
@@ -2511,13 +2551,28 @@ public class DbService : IDbService
 	private static async Task<IDbTransactionScope> CreateTransactionScopeInternalAsync(
 		DbConnectionContext connectionCtx, bool shouldDispose, long? lockKey)
 	{
-		return await DbTransactionScope.CreateAsync(connectionCtx, shouldDispose, lockKey);
+		DbTransactionScope scope = await DbTransactionScope.CreateAsync(connectionCtx, shouldDispose, lockKey);
+		return scope;
 	}
 
 	private static async Task<IDbAdvisoryLockScope> CreateAdvisoryLockScopeInternalAsync(
 		DbConnectionContext connectionCtx, bool shouldDispose, long lockKey)
 	{
 		return await DbAdvisoryLockScope.CreateAsync(connectionCtx, shouldDispose, lockKey);
+	}
+
+	/// <summary>
+	/// Returns a <see cref="System.Data.IDbConnection"/> suitable for passing to Dapper.
+	/// When RLS is configured, wraps the underlying <see cref="NpgsqlConnection"/> in an
+	/// <see cref="Security.RlsDbConnection"/> so every Dapper command receives the RLS prefix.
+	/// </summary>
+	private System.Data.IDbConnection GetDapperConnection(IDbConnection conn)
+	{
+		var npgsqlConn = conn.GetUnderlyingConnection();
+		if (_rlsContextProvider != null && _rlsOptions?.Enabled == true)
+			return new Security.RlsDbConnection(npgsqlConn, _rlsContextProvider, _rlsOptions,
+				() => _rlsSuppressed.Value);
+		return npgsqlConn;
 	}
 
 	private static Dictionary<string, Guid> ConvertToKeysDictionary(object keys)

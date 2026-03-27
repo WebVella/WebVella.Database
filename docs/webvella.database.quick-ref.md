@@ -32,6 +32,19 @@ public class HttpRlsContextProvider : IRlsContextProvider
 builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionString);
 ```
 
+### Temporarily Disabling RLS
+```csharp
+await db.DisableRlsAsync();
+try
+{
+    var allOrders = await db.GetListAsync<Order>();
+}
+finally
+{
+    await db.EnableRlsAsync();
+}
+```
+
 ### With Migrations
 ```csharp
 builder.Services.AddWebVellaDatabase(connectionString);

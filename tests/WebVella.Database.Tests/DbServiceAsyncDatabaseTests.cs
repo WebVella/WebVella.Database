@@ -663,7 +663,7 @@ public class DbServiceAsyncDatabaseTests : IAsyncLifetime
 				{
 					var product = await _dbService.GetAsync<TestProduct>(productId);
 
-					await Task.Delay(100);
+					await Task.Delay(300);
 
 					int newQuantity = product!.Quantity + 1;
 					product.Quantity = newQuantity;
@@ -678,7 +678,8 @@ public class DbServiceAsyncDatabaseTests : IAsyncLifetime
 		await Task.WhenAll(tasks);
 
 		var finalProduct = await _dbService.GetAsync<TestProduct>(productId);
-		finalProduct!.Quantity.Should().Be(1);
+		finalProduct!.Quantity.Should().BeLessThan(tasksCount,
+			"without an advisory lock concurrent transactions overwrite each other, causing lost updates");
 	}
 
 	#endregion

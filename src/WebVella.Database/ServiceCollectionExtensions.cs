@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 using WebVella.Database.Migrations;
 using WebVella.Database.Security;
 
@@ -322,219 +322,219 @@ public static class ServiceCollectionExtensions
 					&& !name.StartsWith("Newtonsoft", StringComparison.OrdinalIgnoreCase)
 					&& !name.StartsWith("NuGet", StringComparison.OrdinalIgnoreCase)
 									&& !name.StartsWith("testhost", StringComparison.OrdinalIgnoreCase);
-								})
+			})
 								.ToArray();
-						}
+	}
 
-						#region <=== Row Level Security ===>
+	#region <=== Row Level Security ===>
 
-						/// <summary>
-						/// Adds WebVella.Database services with Row Level Security (RLS) support.
-						/// </summary>
-						/// <typeparam name="TRlsContextProvider">
-						/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
-						/// </typeparam>
-						/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
-						/// <param name="connectionString">The PostgreSQL connection string.</param>
-						/// <param name="assemblies">
-						/// Optional assemblies to scan for entities with [JsonColumn] attributes.
-						/// </param>
-						/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
-						public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
-							this IServiceCollection services,
-							string connectionString,
-							params Assembly[] assemblies)
-							where TRlsContextProvider : class, IRlsContextProvider
-						{
-							return AddWebVellaDatabaseWithRls<TRlsContextProvider>(
-								services,
-								connectionString,
-								enableCaching: false,
-								rlsOptions: null,
-								assemblies);
-						}
+	/// <summary>
+	/// Adds WebVella.Database services with Row Level Security (RLS) support.
+	/// </summary>
+	/// <typeparam name="TRlsContextProvider">
+	/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
+	/// </typeparam>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="connectionString">The PostgreSQL connection string.</param>
+	/// <param name="assemblies">
+	/// Optional assemblies to scan for entities with [JsonColumn] attributes.
+	/// </param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
+		this IServiceCollection services,
+		string connectionString,
+		params Assembly[] assemblies)
+		where TRlsContextProvider : class, IRlsContextProvider
+	{
+		return AddWebVellaDatabaseWithRls<TRlsContextProvider>(
+			services,
+			connectionString,
+			enableCaching: false,
+			rlsOptions: null,
+			assemblies);
+	}
 
-						/// <summary>
-						/// Adds WebVella.Database services with Row Level Security (RLS) support and caching.
-						/// </summary>
-						/// <typeparam name="TRlsContextProvider">
-						/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
-						/// </typeparam>
-						/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
-						/// <param name="connectionString">The PostgreSQL connection string.</param>
-						/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
-						/// <param name="rlsOptions">Optional RLS configuration options.</param>
-						/// <param name="assemblies">
-						/// Optional assemblies to scan for entities with [JsonColumn] attributes.
-						/// </param>
-						/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
-						public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
-							this IServiceCollection services,
-							string connectionString,
-							bool enableCaching,
-							RlsOptions? rlsOptions = null,
-							params Assembly[] assemblies)
-							where TRlsContextProvider : class, IRlsContextProvider
-						{
-							ArgumentNullException.ThrowIfNull(services);
-							ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+	/// <summary>
+	/// Adds WebVella.Database services with Row Level Security (RLS) support and caching.
+	/// </summary>
+	/// <typeparam name="TRlsContextProvider">
+	/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
+	/// </typeparam>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="connectionString">The PostgreSQL connection string.</param>
+	/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
+	/// <param name="rlsOptions">Optional RLS configuration options.</param>
+	/// <param name="assemblies">
+	/// Optional assemblies to scan for entities with [JsonColumn] attributes.
+	/// </param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
+		this IServiceCollection services,
+		string connectionString,
+		bool enableCaching,
+		RlsOptions? rlsOptions = null,
+		params Assembly[] assemblies)
+		where TRlsContextProvider : class, IRlsContextProvider
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-							RegisterDapperTypeHandlers();
+		RegisterDapperTypeHandlers();
 
-							var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
-							foreach (var assembly in assembliesToScan)
-							{
-								JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
-							}
+		var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
+		foreach (var assembly in assembliesToScan)
+		{
+			JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
+		}
 
-							if (enableCaching)
-							{
-								services.AddMemoryCache();
-								services.AddSingleton<IDbEntityCache, DbEntityCache>();
-							}
-							else
-							{
-								services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
-							}
+		if (enableCaching)
+		{
+			services.AddMemoryCache();
+			services.AddSingleton<IDbEntityCache, DbEntityCache>();
+		}
+		else
+		{
+			services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
+		}
 
-							// Register connection string accessor for migrations (allows bypassing RLS)
-							services.AddSingleton<IDbConnectionStringAccessor>(
-								new DbConnectionStringAccessor(connectionString));
+		// Register connection string accessor for migrations (allows bypassing RLS)
+		services.AddSingleton<IDbConnectionStringAccessor>(
+			new DbConnectionStringAccessor(connectionString));
 
-							services.AddScoped<IRlsContextProvider, TRlsContextProvider>();
+		services.AddScoped<IRlsContextProvider, TRlsContextProvider>();
 
-							var options = rlsOptions ?? new RlsOptions();
-							services.AddScoped<IDbService>(sp =>
-							{
-								var cache = sp.GetRequiredService<IDbEntityCache>();
-								var rlsContext = sp.GetRequiredService<IRlsContextProvider>();
-								return new DbService(connectionString, cache, rlsContext, options);
-							});
+		var options = rlsOptions ?? new RlsOptions();
+		services.AddScoped<IDbService>(sp =>
+		{
+			var cache = sp.GetRequiredService<IDbEntityCache>();
+			var rlsContext = sp.GetRequiredService<IRlsContextProvider>();
+			return new DbService(connectionString, cache, rlsContext, options);
+		});
 
-							return services;
-						}
+		return services;
+	}
 
-						/// <summary>
-						/// Adds WebVella.Database services with Row Level Security (RLS) support using a factory.
-						/// </summary>
-						/// <typeparam name="TRlsContextProvider">
-						/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
-						/// </typeparam>
-						/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
-						/// <param name="connectionStringFactory">
-						/// A factory function that resolves the connection string from the service provider.
-						/// </param>
-						/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
-						/// <param name="rlsOptions">Optional RLS configuration options.</param>
-						/// <param name="assemblies">
-						/// Optional assemblies to scan for entities with [JsonColumn] attributes.
-						/// </param>
-						/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
-						public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
-							this IServiceCollection services,
-							Func<IServiceProvider, string> connectionStringFactory,
-							bool enableCaching = false,
-							RlsOptions? rlsOptions = null,
-							params Assembly[] assemblies)
-							where TRlsContextProvider : class, IRlsContextProvider
-						{
-							ArgumentNullException.ThrowIfNull(services);
-							ArgumentNullException.ThrowIfNull(connectionStringFactory);
+	/// <summary>
+	/// Adds WebVella.Database services with Row Level Security (RLS) support using a factory.
+	/// </summary>
+	/// <typeparam name="TRlsContextProvider">
+	/// The type implementing <see cref="IRlsContextProvider"/> for providing security context.
+	/// </typeparam>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="connectionStringFactory">
+	/// A factory function that resolves the connection string from the service provider.
+	/// </param>
+	/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
+	/// <param name="rlsOptions">Optional RLS configuration options.</param>
+	/// <param name="assemblies">
+	/// Optional assemblies to scan for entities with [JsonColumn] attributes.
+	/// </param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseWithRls<TRlsContextProvider>(
+		this IServiceCollection services,
+		Func<IServiceProvider, string> connectionStringFactory,
+		bool enableCaching = false,
+		RlsOptions? rlsOptions = null,
+		params Assembly[] assemblies)
+		where TRlsContextProvider : class, IRlsContextProvider
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentNullException.ThrowIfNull(connectionStringFactory);
 
-							RegisterDapperTypeHandlers();
+		RegisterDapperTypeHandlers();
 
-							var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
-							foreach (var assembly in assembliesToScan)
-							{
-								JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
-							}
+		var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
+		foreach (var assembly in assembliesToScan)
+		{
+			JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
+		}
 
-							if (enableCaching)
-							{
-								services.AddMemoryCache();
-								services.AddSingleton<IDbEntityCache, DbEntityCache>();
-							}
-							else
-							{
-								services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
-							}
+		if (enableCaching)
+		{
+			services.AddMemoryCache();
+			services.AddSingleton<IDbEntityCache, DbEntityCache>();
+		}
+		else
+		{
+			services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
+		}
 
-							// Register connection string accessor for migrations (allows bypassing RLS)
-							services.AddScoped<IDbConnectionStringAccessor>(sp =>
-								new DbConnectionStringAccessor(connectionStringFactory(sp)));
+		// Register connection string accessor for migrations (allows bypassing RLS)
+		services.AddScoped<IDbConnectionStringAccessor>(sp =>
+			new DbConnectionStringAccessor(connectionStringFactory(sp)));
 
-							services.AddScoped<IRlsContextProvider, TRlsContextProvider>();
+		services.AddScoped<IRlsContextProvider, TRlsContextProvider>();
 
-							var options = rlsOptions ?? new RlsOptions();
-							services.AddScoped<IDbService>(sp =>
-							{
-								var connectionString = connectionStringFactory(sp);
-								var cache = sp.GetRequiredService<IDbEntityCache>();
-								var rlsContext = sp.GetRequiredService<IRlsContextProvider>();
-								return new DbService(connectionString, cache, rlsContext, options);
-							});
+		var options = rlsOptions ?? new RlsOptions();
+		services.AddScoped<IDbService>(sp =>
+		{
+			var connectionString = connectionStringFactory(sp);
+			var cache = sp.GetRequiredService<IDbEntityCache>();
+			var rlsContext = sp.GetRequiredService<IRlsContextProvider>();
+			return new DbService(connectionString, cache, rlsContext, options);
+		});
 
-							return services;
-						}
+		return services;
+	}
 
-						/// <summary>
-						/// Adds WebVella.Database services with Row Level Security (RLS) support using a custom provider factory.
-						/// </summary>
-						/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
-						/// <param name="connectionString">The PostgreSQL connection string.</param>
-						/// <param name="rlsContextProviderFactory">
-						/// A factory function that creates the RLS context provider from the service provider.
-						/// </param>
-						/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
-						/// <param name="rlsOptions">Optional RLS configuration options.</param>
-						/// <param name="assemblies">
-						/// Optional assemblies to scan for entities with [JsonColumn] attributes.
-						/// </param>
-						/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
-						public static IServiceCollection AddWebVellaDatabaseWithRls(
-							this IServiceCollection services,
-							string connectionString,
-							Func<IServiceProvider, IRlsContextProvider> rlsContextProviderFactory,
-							bool enableCaching = false,
-							RlsOptions? rlsOptions = null,
-							params Assembly[] assemblies)
-						{
-							ArgumentNullException.ThrowIfNull(services);
-							ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-							ArgumentNullException.ThrowIfNull(rlsContextProviderFactory);
+	/// <summary>
+	/// Adds WebVella.Database services with Row Level Security (RLS) support using a custom provider factory.
+	/// </summary>
+	/// <param name="services">The <see cref="IServiceCollection"/> to add services to.</param>
+	/// <param name="connectionString">The PostgreSQL connection string.</param>
+	/// <param name="rlsContextProviderFactory">
+	/// A factory function that creates the RLS context provider from the service provider.
+	/// </param>
+	/// <param name="enableCaching">Whether to enable entity caching for types marked with [Cacheable].</param>
+	/// <param name="rlsOptions">Optional RLS configuration options.</param>
+	/// <param name="assemblies">
+	/// Optional assemblies to scan for entities with [JsonColumn] attributes.
+	/// </param>
+	/// <returns>The <see cref="IServiceCollection"/> for chaining.</returns>
+	public static IServiceCollection AddWebVellaDatabaseWithRls(
+		this IServiceCollection services,
+		string connectionString,
+		Func<IServiceProvider, IRlsContextProvider> rlsContextProviderFactory,
+		bool enableCaching = false,
+		RlsOptions? rlsOptions = null,
+		params Assembly[] assemblies)
+	{
+		ArgumentNullException.ThrowIfNull(services);
+		ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+		ArgumentNullException.ThrowIfNull(rlsContextProviderFactory);
 
-							RegisterDapperTypeHandlers();
+		RegisterDapperTypeHandlers();
 
-							var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
-							foreach (var assembly in assembliesToScan)
-							{
-								JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
-							}
+		var assembliesToScan = assemblies.Length > 0 ? assemblies : GetApplicationAssemblies();
+		foreach (var assembly in assembliesToScan)
+		{
+			JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
+		}
 
-							if (enableCaching)
-							{
-								services.AddMemoryCache();
-								services.AddSingleton<IDbEntityCache, DbEntityCache>();
-							}
-							else
-							{
-								services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
-							}
+		if (enableCaching)
+		{
+			services.AddMemoryCache();
+			services.AddSingleton<IDbEntityCache, DbEntityCache>();
+		}
+		else
+		{
+			services.AddSingleton<IDbEntityCache>(NullDbEntityCache.Instance);
+		}
 
-							// Register connection string accessor for migrations (allows bypassing RLS)
-							services.AddSingleton<IDbConnectionStringAccessor>(
-								new DbConnectionStringAccessor(connectionString));
+		// Register connection string accessor for migrations (allows bypassing RLS)
+		services.AddSingleton<IDbConnectionStringAccessor>(
+			new DbConnectionStringAccessor(connectionString));
 
-							var options = rlsOptions ?? new RlsOptions();
-							services.AddScoped<IDbService>(sp =>
-							{
-								var cache = sp.GetRequiredService<IDbEntityCache>();
-								var rlsContext = rlsContextProviderFactory(sp);
-								return new DbService(connectionString, cache, rlsContext, options);
-							});
+		var options = rlsOptions ?? new RlsOptions();
+		services.AddScoped<IDbService>(sp =>
+		{
+			var cache = sp.GetRequiredService<IDbEntityCache>();
+			var rlsContext = rlsContextProviderFactory(sp);
+			return new DbService(connectionString, cache, rlsContext, options);
+		});
 
-							return services;
-						}
+		return services;
+	}
 
-						#endregion
-					}
+	#endregion
+}
