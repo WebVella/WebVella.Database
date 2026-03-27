@@ -878,7 +878,6 @@ public interface IDbService
 public class DbService : IDbService
 {
 	private readonly string _connectionString;
-	private readonly string _adminConnectionString;
 	private readonly Security.RlsOptions? _rlsOptions;
 	private readonly IDbEntityCache _cache;
 	private readonly Security.IRlsContextProvider? _rlsContextProvider;
@@ -922,19 +921,7 @@ public class DbService : IDbService
 		ArgumentNullException.ThrowIfNull(cache);
 
 		var options = rlsOptions ?? new Security.RlsOptions();
-		_adminConnectionString = connectionString;
 		_rlsOptions = options;
-
-		if (rlsContextProvider != null && options.Enabled
-			&& (!string.IsNullOrWhiteSpace(options.SqlUser) || !string.IsNullOrWhiteSpace(options.SqlPassword)))
-		{
-			var builder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
-			if (!string.IsNullOrWhiteSpace(options.SqlUser))
-				builder.Username = options.SqlUser;
-			if (!string.IsNullOrWhiteSpace(options.SqlPassword))
-				builder.Password = options.SqlPassword;
-			connectionString = builder.ConnectionString;
-		}
 
 		_connectionString = connectionString;
 		_cache = cache;
@@ -2474,7 +2461,7 @@ public class DbService : IDbService
 		var escapedUserLiteral = rlsOptions.SqlUser.Replace("'", "''");
 		var escapedPassword = rlsOptions.SqlPassword.Replace("'", "''");
 
-		await using var adminConn = new Npgsql.NpgsqlConnection(_adminConnectionString);
+		await using var adminConn = new Npgsql.NpgsqlConnection(_connectionString);
 		await adminConn.OpenAsync();
 
 		var dbName = (await adminConn.ExecuteScalarAsync<string>("SELECT current_database()"))!;

@@ -4,6 +4,7 @@ using BaseDbTransaction = System.Data.Common.DbTransaction;
 using BaseDbParameter = System.Data.Common.DbParameter;
 using BaseDbParameterCollection = System.Data.Common.DbParameterCollection;
 using BaseDbDataReader = System.Data.Common.DbDataReader;
+using System.Net.NetworkInformation;
 
 namespace WebVella.Database.Security;
 
@@ -129,31 +130,43 @@ internal sealed class RlsDbCommand : BaseDbCommand
 			return sql;
 
 		var prefix = BuildRlsPrefix();
-		return string.IsNullOrEmpty(prefix) ? sql : $"{prefix} {sql}";
+		var suffix = string.Empty;
+
+		if (!string.IsNullOrWhiteSpace(prefix))
+			suffix = ";\r\nRESET ROLE;";
+
+		return string.IsNullOrEmpty(prefix) ? sql : $"{prefix} {sql} {suffix}";
 	}
 
 	private string BuildRlsPrefix()
 	{
 		if (!_options.Enabled)
+		{
 			return string.Empty;
+		}
 
 		var settingName = _options.SettingName;
 		var claimsNamespace = settingName.Contains('.')
 			? settingName[..settingName.IndexOf('.')]
 			: settingName;
 
+		string setRole = string.Empty;
 		var statements = new List<string>();
 
 		if (_isSuppressed())
 		{
-			statements.Add(BuildSetStatement(settingName, string.Empty));
-			foreach (var claim in _contextProvider.CustomClaims)
-			{
-				statements.Add(BuildSetStatement($"{claimsNamespace}.{SanitizeKey(claim.Key)}", string.Empty));
-			}
+			return string.Empty;
+			//statements.Add(BuildSetStatement(settingName, string.Empty));
+			//foreach (var claim in _contextProvider.CustomClaims)
+			//{
+			//	statements.Add(BuildSetStatement($"{claimsNamespace}.{SanitizeKey(claim.Key)}", string.Empty));
+			//}
 		}
-		else if (_contextProvider.EntityId != null || _contextProvider.CustomClaims.Count > 0)
+		else if (_contextProvider.EntityId != null || _contextProvider.CustomClaims.Count > 0 &&
+			!string.IsNullOrWhiteSpace(_options.SqlUser))
 		{
+			setRole = $"SET LOCAL ROLE '{_options.SqlUser}';";
+
 			if (_contextProvider.EntityId != null)
 				statements.Add(BuildSetStatement(settingName, _contextProvider.EntityId));
 
@@ -164,14 +177,15 @@ internal sealed class RlsDbCommand : BaseDbCommand
 					claim.Value ?? string.Empty));
 			}
 		}
+		string statementsString = string.Join("\r\n", statements);
 
-		return statements.Count > 0 ? string.Join(" ", statements) : string.Empty;
+		return statements.Count > 0 ? $"{setRole}\r\n{statementsString}\r\n" : string.Empty;
 	}
 
 	private static string BuildSetStatement(string name, string value)
 	{
 		var escapedValue = value.Replace("'", "''");
-		return $"SET SESSION {name} = '{escapedValue}';";
+		return $"SET LOCAL {name} = '{escapedValue}';";
 	}
 
 	private static string SanitizeKey(string key)
