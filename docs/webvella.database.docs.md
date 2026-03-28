@@ -1815,7 +1815,7 @@ await using var scope = await _db.CreateTransactionScopeAsync(
 
 ## Caching
 
-WebVella.Database uses **Microsoft.Extensions.Caching.Hybrid v10.4.0** for modern, high-performance caching with async-first operations and tag-based invalidation.
+WebVella.Database uses **Microsoft.Extensions.Caching.Hybrid** for modern, high-performance caching with async-first operations and tag-based invalidation.
 
 ### Cacheable Entity Configuration
 

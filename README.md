@@ -12,7 +12,7 @@ Checkout our other projects:
 
 ## 🚀 What's New in v1.4.0
 
-**HybridCache Migration** - Upgraded to `Microsoft.Extensions.Caching.Hybrid` v10.4.0 for modern, high-performance caching:
+**HybridCache Migration** - Upgraded to `Microsoft.Extensions.Caching.Hybrid` for modern, high-performance caching:
 - ✨ **Async-first API**: All cache operations are fully async
 - ✨ **Tag-based invalidation**: Invalidate multiple cache entries with a single tag
 - ✨ **Distributed cache ready**: Built-in L1 (memory) + L2 (distributed) support

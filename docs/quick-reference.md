@@ -3,7 +3,7 @@
 > **Note**: This is a condensed reference. See [webvella.database.quick-ref.md](webvella.database.quick-ref.md) for detailed quick reference or [webvella.database.docs.md](webvella.database.docs.md) for complete documentation.
 
 ## 🚀 Latest: v1.4.0 - HybridCache Migration
-- ✨ Async-first caching with HybridCache v10.4.0
+- ✨ Async-first caching with HybridCache
 - ✨ Tag-based invalidation
 - ✨ Distributed cache ready
 - 💥 IDbEntityCache methods now async
@@ -36,7 +36,7 @@ builder.Services.AddWebVellaDatabaseWithRls<MyRlsProvider>(connectionString);
 ## Entity Definition
 ```csharp
 [Table("users")]
-[Cacheable(DurationSeconds = 600)]  // Auto-cached with HybridCache v10.4.0
+[Cacheable(DurationSeconds = 600)]  // Auto-cached with HybridCache
 public class User
 {
     [Key]
@@ -88,7 +88,7 @@ await _db.UpdateAsync(inventory);
 await scope.CompleteAsync();
 ```
 
-## Caching (HybridCache v10.4.0)
+## Caching (HybridCache)
 ```csharp
 [Cacheable(DurationSeconds = 600)]
 public class Product { }

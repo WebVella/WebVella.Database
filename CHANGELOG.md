@@ -3,7 +3,7 @@
 ## [1.4.0] - 2026-03-28
 
 ### 🚀 Major Changes
-- **HybridCache Migration**: Replaced `IMemoryCache` with `Microsoft.Extensions.Caching.Hybrid` v10.4.0 for modern, high-performance caching
+- **HybridCache Migration**: Replaced `IMemoryCache` with `Microsoft.Extensions.Caching.Hybrid` for modern, high-performance caching
   - **Async-first API**: All cache operations are now fully async (`GetOrCreateAsync`, `GetOrCreateCollectionAsync`)
   - **Tag-based invalidation**: Use `InvalidateByTagAsync(tag)` to invalidate multiple cache entries at once
   - **Distributed cache ready**: Built-in support for both in-memory (L1) and distributed (L2) caching

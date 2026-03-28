@@ -14,7 +14,7 @@ builder.Services.AddWebVellaDatabase("Host=localhost;Database=mydb;Username=user
 
 ### With Caching (HybridCache)
 ```csharp
-// Enables Microsoft.Extensions.Caching.Hybrid v10.4.0 for modern async-first caching
+// Enables Microsoft.Extensions.Caching.Hybrid for modern async-first caching
 builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
 ```
 

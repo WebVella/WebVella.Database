@@ -10,7 +10,7 @@
 		<PackageId>$(AssemblyName)</PackageId>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<Description>A lightweight, high-performance Postgres data access library built on Dapper with nested transactions, advisory locks, RLS, and migrations. Documentation: https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md</Description>
-		<Version>1.4.1</Version>
+		<Version>1.4.2</Version>
 		<Authors>WebVella</Authors>
 		<Company>WebVella</Company>
 		<Copyright>WebVella 2026</Copyright>
@@ -55,6 +55,7 @@
 		<None Remove="..\..\docs\HybridCache-Migration-Guide.md" />
 		<None Remove="..\..\docs\HybridCache-Testing-Summary-backup.md" />
 		<None Remove="..\..\docs\HybridCache-Testing-Summary.md" />
+		<None Remove="..\..\docs\quick-reference.md" />
 		<None Include="..\..\CHANGELOG.md">
 			<Pack>True</Pack>
 			<PackagePath>\</PackagePath>
@@ -73,13 +74,13 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.72" />
-		<PackageReference Include="Npgsql" Version="10.0.1" />
+		<PackageReference Include="Npgsql" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.4.0" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
 
 		<!-- Source Link support -->
-		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.201" PrivateAssets="All" />
 	</ItemGroup>
 
 </Project>
