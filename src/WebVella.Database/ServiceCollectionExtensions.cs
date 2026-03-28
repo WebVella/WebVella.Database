@@ -389,7 +389,7 @@ public static class ServiceCollectionExtensions
 
 		if (enableCaching)
 		{
-			services.AddMemoryCache();
+			services.AddHybridCache();
 			services.AddSingleton<IDbEntityCache, DbEntityCache>();
 		}
 		else
@@ -451,7 +451,7 @@ public static class ServiceCollectionExtensions
 
 		if (enableCaching)
 		{
-			services.AddMemoryCache();
+			services.AddHybridCache();
 			services.AddSingleton<IDbEntityCache, DbEntityCache>();
 		}
 		else
@@ -513,7 +513,7 @@ public static class ServiceCollectionExtensions
 
 		if (enableCaching)
 		{
-			services.AddMemoryCache();
+			services.AddHybridCache();
 			services.AddSingleton<IDbEntityCache, DbEntityCache>();
 		}
 		else
