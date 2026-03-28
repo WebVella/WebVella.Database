@@ -82,7 +82,7 @@ public class ExplicitKeyAttribute : Attribute
 }
 
 /// <summary>
-/// Marks a property as external. It will be excluded from INSERT and UPDATE.
+/// Marks a property as external. It will be excluded from SELECT,INSERT and UPDATE.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
 public class ExternalAttribute : Attribute
@@ -138,6 +138,20 @@ public class WriteAttribute : Attribute
 	{
 		Write = write;
 	}
+}
+
+/// <summary>
+/// Marks a property as read-only. The property will be included in SELECT operations
+/// but excluded from INSERT and UPDATE operations.
+/// </summary>
+/// <remarks>
+/// Use this attribute for computed columns, database-generated values, or any property
+/// that should only be read from the database and never written.
+/// This is equivalent to <c>[Write(false)]</c> but provides clearer intent.
+/// </remarks>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
+public class ReadOnlyAttribute : Attribute
+{
 }
 
 /// <summary>

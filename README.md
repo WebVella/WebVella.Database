@@ -136,6 +136,9 @@ public class User
     [JsonColumn]
     public UserSettings? Settings { get; set; }
 
+    [ReadOnly]
+    public DateTime CreatedOn { get; set; }
+
     [External]
     public List<Order>? Orders { get; set; }
 }

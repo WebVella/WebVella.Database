@@ -79,7 +79,8 @@ public class MyService
 | `[ExplicitKey]` | Property | Marks property as explicit primary key (user-provided) |
 | `[DbColumn("name")]` | Property | Specifies explicit database column name, overriding auto snake_case conversion |
 | `[External]` | Property | Excludes property from INSERT/UPDATE/SELECT operations |
-| `[Write(false)]` | Property | Prevents property from being written to database |
+| `[ReadOnly]` | Property | Excludes property from INSERT/UPDATE but includes in SELECT (for computed/generated columns) |
+| `[Write(false)]` | Property | Prevents property from being written to database (equivalent to `[ReadOnly]`) |
 | `[JsonColumn]` | Property | Property is serialized/deserialized as JSON |
 | `[Cacheable]` | Class | Enables entity caching with automatic invalidation |
 | `[MultiQuery]` | Class | Marks class as container for multiple result sets |

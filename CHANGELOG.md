@@ -10,6 +10,13 @@
   - **Better performance**: Optimized serialization, stampede protection, and memory management
   - **Backward compatible**: All existing caching functionality preserved
 
+### ✨ New Features
+- **`[ReadOnly]` Attribute**: New attribute for properties that should be read from database but not written
+  - Useful for computed columns, database-generated timestamps, and trigger-maintained values
+  - More explicit than `[Write(false)]` for database-managed properties
+  - Example: `[ReadOnly] public DateTime CreatedOn { get; set; }`
+  - Properties are included in SELECT but excluded from INSERT/UPDATE operations
+
 ### 💥 Breaking Changes
 - **`IDbEntityCache` interface redesigned**: All methods are now async
   - `GetOrCreate` → `GetOrCreateAsync`

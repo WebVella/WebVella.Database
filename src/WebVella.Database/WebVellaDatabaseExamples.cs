@@ -79,6 +79,9 @@ public static class WebVellaDatabaseExamples
 	///     [JsonColumn]
 	///     public UserSettings? Settings { get; set; }
 	///     
+	///     [ReadOnly]
+	///     public DateTime CreatedOn { get; set; }
+	///     
 	///     [Write(false)]
 	///     public string DisplayName => $"{Name} ({Email})";
 	///     

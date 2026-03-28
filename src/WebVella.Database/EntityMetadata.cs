@@ -338,6 +338,7 @@ internal sealed class EntityMetadata
 		return type.GetProperties()
 			.Where(p => p.CanRead && p.CanWrite)
 			.Where(p => p.GetCustomAttribute<ExternalAttribute>() == null)
+			.Where(p => p.GetCustomAttribute<ReadOnlyAttribute>() == null)
 			.Where(p =>
 			{
 				var writeAttr = p.GetCustomAttribute<WriteAttribute>();
