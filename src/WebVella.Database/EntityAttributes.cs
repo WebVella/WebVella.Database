@@ -6,8 +6,15 @@ namespace WebVella.Database;
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
 public class TableAttribute : Attribute
 {
+	/// <summary>
+	/// Gets the name of the database table.
+	/// </summary>
 	public string Name { get; }
 
+	/// <summary>
+	/// Initializes a new instance of the <see cref="TableAttribute"/> class.
+	/// </summary>
+	/// <param name="name">The name of the database table.</param>
 	public TableAttribute(string name)
 	{
 		Name = name;
@@ -118,8 +125,15 @@ public class ResultSetAttribute : Attribute
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
 public class WriteAttribute : Attribute
 {
+	/// <summary>
+	/// Gets a value indicating whether the property should be written to the database.
+	/// </summary>
 	public bool Write { get; }
 
+	/// <summary>
+	/// Initializes a new instance of the <see cref="WriteAttribute"/> class.
+	/// </summary>
+	/// <param name="write">True if the property should be written to the database; otherwise, false.</param>
 	public WriteAttribute(bool write)
 	{
 		Write = write;

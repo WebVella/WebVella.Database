@@ -1509,9 +1509,7 @@ public class DbService : IDbService
 		}
 
 		if (metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			_cache.InvalidateByTagAsync(GetTableTag(metadata.TableName)).GetAwaiter().GetResult();
 
 		return entity;
 	}
@@ -1556,9 +1554,7 @@ public class DbService : IDbService
 		}
 
 		if (metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			await _cache.InvalidateByTagAsync(GetTableTag(metadata.TableName));
 
 		return entity;
 	}
@@ -1638,9 +1634,7 @@ public class DbService : IDbService
 		var affected = dapperConn.Execute(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			_cache.InvalidateByTagAsync(GetTableTag(metadata.TableName)).GetAwaiter().GetResult();
 
 		return affected > 0;
 	}
@@ -1700,9 +1694,7 @@ public class DbService : IDbService
 		var affected = await dapperConn.ExecuteAsync(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			await _cache.InvalidateByTagAsync(GetTableTag(metadata.TableName));
 
 		return affected > 0;
 	}
@@ -1743,9 +1735,7 @@ public class DbService : IDbService
 		var affected = dapperConn.Execute(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			_cache.InvalidateByTagAsync(GetTableTag(metadata.TableName)).GetAwaiter().GetResult();
 
 		return affected > 0;
 	}
@@ -1762,9 +1752,7 @@ public class DbService : IDbService
 		var affected = await dapperConn.ExecuteAsync(sql, entity, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			await _cache.InvalidateByTagAsync(GetTableTag(metadata.TableName));
 
 		return affected > 0;
 	}
@@ -1841,9 +1829,7 @@ public class DbService : IDbService
 		var affected = dapperConn.Execute(sql, parameters, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			_cache.InvalidateByTagAsync(GetTableTag(metadata.TableName)).GetAwaiter().GetResult();
 
 		return affected > 0;
 	}
@@ -1880,9 +1866,7 @@ public class DbService : IDbService
 		var affected = await dapperConn.ExecuteAsync(sql, parameters, transaction: null);
 
 		if (affected > 0 && metadata.IsCacheable)
-		{
-			_cache.Invalidate<T>();
-		}
+			await _cache.InvalidateByTagAsync(GetTableTag(metadata.TableName));
 
 		return affected > 0;
 	}
@@ -1969,10 +1953,21 @@ public class DbService : IDbService
 		if (metadata.IsCacheable)
 		{
 			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
-			if (_cache.TryGet<T>(cacheKey, out var cached))
-			{
-				return cached;
-			}
+			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
+			return _cache.GetOrCreateAsync<T>(cacheKey,
+				_ =>
+				{
+					using var conn = CreateConnection();
+					var dapperConn = GetDapperConnection(conn);
+					var parameters = new DynamicParameters();
+					foreach (var keyProp in metadata.KeyProperties)
+						parameters.Add(keyProp.Name, keys[keyProp.Name]);
+					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
+					return ValueTask.FromResult(
+						dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null));
+				},
+				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags)
+				.GetAwaiter().GetResult();
 		}
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
@@ -1986,16 +1981,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var entity = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
-
-		// Cache the result
-		if (metadata.IsCacheable)
-		{
-			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
-			_cache.Set(cacheKey, entity, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
-		}
-
-		return entity;
+		return dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
 	}
 
 	/// <inheritdoc/>
@@ -2020,10 +2006,19 @@ public class DbService : IDbService
 		if (metadata.IsCacheable)
 		{
 			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
-			if (_cache.TryGet<T>(cacheKey, out var cached))
-			{
-				return cached;
-			}
+			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
+			return await _cache.GetOrCreateAsync<T>(cacheKey,
+				async _ =>
+				{
+					await using var conn = await CreateConnectionAsync();
+					var dapperConn = GetDapperConnection(conn);
+					var parameters = new DynamicParameters();
+					foreach (var keyProp in metadata.KeyProperties)
+						parameters.Add(keyProp.Name, keys[keyProp.Name]);
+					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
+					return await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+				},
+				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags);
 		}
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
@@ -2037,16 +2032,7 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		var entity = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
-
-		// Cache the result
-		if (metadata.IsCacheable)
-		{
-			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
-			_cache.Set(cacheKey, entity, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
-		}
-
-		return entity;
+		return await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
 	}
 
 	/// <inheritdoc/>
@@ -2078,10 +2064,18 @@ public class DbService : IDbService
 		if (metadata.IsCacheable)
 		{
 			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
-			if (_cache.TryGetCollection<T>(cacheKey, out var cached))
-			{
-				return cached!;
-			}
+			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
+			return _cache.GetOrCreateCollectionAsync<T>(cacheKey,
+				_ =>
+				{
+					using var conn = CreateConnection();
+					var dapperConn = GetDapperConnection(conn);
+					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
+					return ValueTask.FromResult<IEnumerable<T>>(
+						dapperConn.Query<T>(sql, transaction: null).ToList());
+				},
+				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags)
+				.GetAwaiter().GetResult();
 		}
 
 		using var conn = CreateConnection();
@@ -2089,13 +2083,6 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
 		var entities = dapperConn.Query<T>(sql, transaction: null).ToList();
-
-		// Cache the result
-		if (metadata.IsCacheable)
-		{
-			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
-			_cache.SetCollection(cacheKey, entities, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
-		}
 
 		return entities;
 	}
@@ -2109,10 +2096,16 @@ public class DbService : IDbService
 		if (metadata.IsCacheable)
 		{
 			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
-			if (_cache.TryGetCollection<T>(cacheKey, out var cached))
-			{
-				return cached!;
-			}
+			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
+			return await _cache.GetOrCreateCollectionAsync<T>(cacheKey,
+				async _ =>
+				{
+					await using var conn = await CreateConnectionAsync();
+					var dapperConn = GetDapperConnection(conn);
+					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
+					return (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
+				},
+				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags);
 		}
 
 		await using var conn = await CreateConnectionAsync();
@@ -2120,13 +2113,6 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
 		var entities = (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
-
-		// Cache the result
-		if (metadata.IsCacheable)
-		{
-			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
-			_cache.SetCollection(cacheKey, entities, metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration);
-		}
 
 		return entities;
 	}
@@ -2498,6 +2484,8 @@ public class DbService : IDbService
 	#endregion
 
 	#region <=== Private Helpers ===>
+
+	private static string GetTableTag(string tableName) => $"table:{tableName}";
 
 	/// <summary>
 	/// Gets the current RLS context string for cache key generation.

@@ -67,7 +67,7 @@ public static class ServiceCollectionExtensions
 		// Register caching if enabled
 		if (enableCaching)
 		{
-			services.AddMemoryCache();
+			services.AddHybridCache();
 			services.AddSingleton<IDbEntityCache, DbEntityCache>();
 		}
 		else
@@ -146,7 +146,7 @@ public static class ServiceCollectionExtensions
 		// Register caching if enabled
 		if (enableCaching)
 		{
-			services.AddMemoryCache();
+			services.AddHybridCache();
 			services.AddSingleton<IDbEntityCache, DbEntityCache>();
 		}
 		else

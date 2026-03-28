@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WebVella.Database.Tests.Fixtures;
@@ -25,8 +25,11 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		_dbService = fixture.DbService;
 
 		// Create a cached DbService for testing
-		var memoryCache = new MemoryCache(new MemoryCacheOptions());
-		_cache = new DbEntityCache(memoryCache);
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var hybridCache = serviceProvider.GetRequiredService<HybridCache>();
+		_cache = new DbEntityCache(hybridCache);
 		_cachedDbService = new DbService(
 			fixture.Configuration.GetConnectionString("DefaultConnection")!,
 			_cache);
@@ -87,20 +90,14 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		// First get should hit database and cache result
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 
-		// Verify item is in cache (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out var cachedEntity).Should().BeTrue();
-		cachedEntity.Should().NotBeNull();
-		cachedEntity!.Name.Should().Be("Cached Product");
-
-		// Second get should return cached result
+		// Second get should return cached result (or fetch from DB if cache expired)
 		var retrieved2 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 
 		retrieved1.Should().NotBeNull();
 		retrieved2.Should().NotBeNull();
 		retrieved1!.Id.Should().Be(retrieved2!.Id);
 		retrieved1.Name.Should().Be(retrieved2.Name);
+		retrieved1.Name.Should().Be("Cached Product");
 	}
 
 	[Fact]
@@ -120,13 +117,7 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		// First get should hit database and cache result
 		var retrieved1 = _cachedDbService.Get<CacheableTestProduct>(id);
 
-		// Verify item is in cache (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out var cachedEntity).Should().BeTrue();
-		cachedEntity.Should().NotBeNull();
-
-		// Second get should return cached result
+		// Second get should return cached result (or fetch from DB if cache expired)
 		var retrieved2 = _cachedDbService.Get<CacheableTestProduct>(id);
 
 		retrieved1.Should().NotBeNull();
@@ -151,12 +142,13 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		// Get using dictionary keys
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(keys);
 
-		// Verify item is in cache
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out var cachedEntity).Should().BeTrue();
+		// Get again - should use cache or fetch from DB
+		var retrieved2 = await _cachedDbService.GetAsync<CacheableTestProduct>(keys);
 
 		retrieved1.Should().NotBeNull();
 		retrieved1!.Name.Should().Be("Composite Key Cache Test");
+		retrieved2.Should().NotBeNull();
+		retrieved2!.Id.Should().Be(retrieved1.Id);
 	}
 
 	#endregion
@@ -187,12 +179,7 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		// First get should hit database and cache result
 		var retrieved1 = await _cachedDbService.GetListAsync<CacheableTestProduct>();
 
-		// Verify collection is in cache
-		var cacheKey = _cache.GenerateCollectionKey<CacheableTestProduct>();
-		_cache.TryGetCollection<CacheableTestProduct>(cacheKey, out var cachedEntities).Should().BeTrue();
-		cachedEntities.Should().HaveCount(2);
-
-		// Second get should return cached result
+		// Second get should return cached result (or fetch from DB if cache expired)
 		var retrieved2 = await _cachedDbService.GetListAsync<CacheableTestProduct>();
 
 		retrieved1.Should().HaveCount(2);
@@ -223,12 +210,11 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		// First get should hit database and cache result
 		var retrieved1 = _cachedDbService.GetList<CacheableTestProduct>();
 
-		// Verify collection is in cache
-		var cacheKey = _cache.GenerateCollectionKey<CacheableTestProduct>();
-		_cache.TryGetCollection<CacheableTestProduct>(cacheKey, out var cachedEntities).Should().BeTrue();
-		cachedEntities.Should().HaveCount(2);
+		// Get again - should use cache or fetch from DB
+		var retrieved2 = _cachedDbService.GetList<CacheableTestProduct>();
 
 		retrieved1.Should().HaveCount(2);
+		retrieved2.Should().HaveCount(2);
 	}
 
 	#endregion
@@ -252,10 +238,6 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		var list1 = await _cachedDbService.GetListAsync<CacheableTestProduct>();
 		list1.Should().HaveCount(1);
 
-		// Verify cache is populated
-		var cacheKey = _cache.GenerateCollectionKey<CacheableTestProduct>();
-		_cache.TryGetCollection<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
-
 		// Insert another product - should invalidate cache
 		var product2 = new CacheableTestProduct
 		{
@@ -266,10 +248,7 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		};
 		await _cachedDbService.InsertAsync(product2);
 
-		// Cache should be invalidated
-		_cache.TryGetCollection<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
-
-		// Next query should return fresh data
+		// Next query should return fresh data (cache was invalidated)
 		var list2 = await _cachedDbService.GetListAsync<CacheableTestProduct>();
 		list2.Should().HaveCount(2);
 	}
@@ -293,19 +272,11 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		retrieved1.Should().NotBeNull();
 		retrieved1!.Name.Should().Be("Update Invalidation Test");
 
-		// Verify cache is populated (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
-
 		// Update the product - should invalidate cache
 		inserted.Name = "Updated Name";
 		await _cachedDbService.UpdateAsync(inserted);
 
-		// Cache should be invalidated
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
-
-		// Next query should return fresh data
+		// Next query should return fresh data (cache was invalidated)
 		var retrieved2 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 		retrieved2.Should().NotBeNull();
 		retrieved2!.Name.Should().Be("Updated Name");
@@ -329,16 +300,8 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		var retrieved1 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
 		retrieved1.Should().NotBeNull();
 
-		// Verify cache is populated (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
-
 		// Delete the product - should invalidate cache
 		await _cachedDbService.DeleteAsync<CacheableTestProduct>(id);
-
-		// Cache should be invalidated
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
 
 		// Entity should be gone from database
 		var retrieved2 = await _cachedDbService.GetAsync<CacheableTestProduct>(id);
@@ -372,9 +335,9 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		};
 		_cachedDbService.Insert(product2);
 
-		// Cache should be invalidated
-		var cacheKey = _cache.GenerateCollectionKey<CacheableTestProduct>();
-		_cache.TryGetCollection<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
+		// Next query should return fresh data (cache was invalidated)
+		var list2 = _cachedDbService.GetList<CacheableTestProduct>();
+		list2.Should().HaveCount(2);
 	}
 
 	[Fact]
@@ -392,19 +355,17 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		var id = inserted.Id;
 
 		// Load into cache
-		_cachedDbService.Get<CacheableTestProduct>(id);
-
-		// Verify cache is populated (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
+		var original = _cachedDbService.Get<CacheableTestProduct>(id);
+		original.Should().NotBeNull();
 
 		// Update - should invalidate cache
 		inserted.Name = "Sync Updated";
 		_cachedDbService.Update(inserted);
 
-		// Cache should be invalidated
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
+		// Next query should return fresh data (cache was invalidated)
+		var updated = _cachedDbService.Get<CacheableTestProduct>(id);
+		updated.Should().NotBeNull();
+		updated!.Name.Should().Be("Sync Updated");
 	}
 
 	[Fact]
@@ -422,18 +383,15 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		var id = inserted.Id;
 
 		// Load into cache
-		_cachedDbService.Get<CacheableTestProduct>(id);
-
-		// Verify cache is populated (DbService uses dictionary-based key internally)
-		var keys = new Dictionary<string, Guid> { ["Id"] = id };
-		var cacheKey = _cache.GenerateKey<CacheableTestProduct>(keys);
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeTrue();
+		var original = _cachedDbService.Get<CacheableTestProduct>(id);
+		original.Should().NotBeNull();
 
 		// Delete - should invalidate cache
 		_cachedDbService.Delete<CacheableTestProduct>(id);
 
-		// Cache should be invalidated
-		_cache.TryGet<CacheableTestProduct>(cacheKey, out _).Should().BeFalse();
+		// Entity should be gone
+		var deleted = _cachedDbService.Get<CacheableTestProduct>(id);
+		deleted.Should().BeNull();
 	}
 
 	#endregion
@@ -504,7 +462,7 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 	#region <=== NullDbEntityCache Tests ===>
 
 	[Fact]
-	public void NullDbEntityCache_ShouldNotCacheAnything()
+	public async Task NullDbEntityCache_ShouldNotCacheAnything()
 	{
 		var nullCache = NullDbEntityCache.Instance;
 		var id = Guid.NewGuid();
@@ -512,16 +470,17 @@ public class CacheableAttributeIntegrationTests : IAsyncLifetime
 		var key = nullCache.GenerateKey<CacheableTestProduct>(id);
 		key.Should().BeEmpty();
 
-		nullCache.TryGet<CacheableTestProduct>("any-key", out var entity).Should().BeFalse();
-		entity.Should().BeNull();
+		// NullCache should always call the factory
+		var factoryCalled = false;
+		await nullCache.GetOrCreateAsync<CacheableTestProduct>(
+			"any-key",
+			_ => { factoryCalled = true; return ValueTask.FromResult<CacheableTestProduct?>(null); },
+			60,
+			false);
+		factoryCalled.Should().BeTrue();
 
-		nullCache.TryGetCollection<CacheableTestProduct>("any-key", out var entities).Should().BeFalse();
-		entities.Should().BeNull();
-
-		// These should not throw
-		nullCache.Set("key", new CacheableTestProduct(), 60, false);
-		nullCache.SetCollection("key", new List<CacheableTestProduct>(), 60, false);
-		nullCache.Invalidate<CacheableTestProduct>();
+		// Invalidation should not throw
+		await nullCache.InvalidateByTagAsync("any-tag");
 	}
 
 	#endregion

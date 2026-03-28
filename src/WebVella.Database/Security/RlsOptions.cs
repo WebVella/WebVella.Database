@@ -12,23 +12,12 @@ public class RlsOptions
 	/// Default is "app.user_id".
 	/// </summary>
 	/// <remarks>
-	/// This value is used directly as the PostgreSQL variable name when setting the entity identifier,
-	/// e.g. <c>set_config('app.user_id', value, true)</c>.
+	/// This value is used directly as the PostgreSQL variable name when setting the entity identifier
+	/// using transaction-scoped (LOCAL) settings, e.g. <c>SET LOCAL app.user_id = 'value'</c>.
 	/// Custom claims derive their namespace from the part before the first dot of this value,
 	/// so a setting name of <c>"app.user_id"</c> will place custom claims under <c>app.{key}</c>.
 	/// </remarks>
 	public string SettingName { get; set; } = "app.user_id";
-
-	/// <summary>
-	/// Gets or sets whether to use local (transaction-scoped) settings.
-	/// Default is <c>true</c>.
-	/// </summary>
-	/// <remarks>
-	/// When <c>true</c>, session variables are scoped to the current transaction using
-	/// <c>set_config(name, value, true)</c>. When <c>false</c>, variables persist for
-	/// the entire session using <c>SET</c> statements.
-	/// </remarks>
-	public bool UseLocalSettings { get; set; } = true;
 
 	/// <summary>
 	/// Gets or sets whether RLS context initialization is enabled.

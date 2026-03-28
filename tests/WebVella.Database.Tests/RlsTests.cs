@@ -53,7 +53,6 @@ public class RlsTests
 		var options = new RlsOptions();
 
 		options.SettingName.Should().Be("app.user_id");
-		options.UseLocalSettings.Should().BeTrue();
 		options.Enabled.Should().BeTrue();
 	}
 
@@ -63,12 +62,10 @@ public class RlsTests
 		var options = new RlsOptions
 		{
 			SettingName = "rls.user_id",
-			UseLocalSettings = false,
 			Enabled = false
 		};
 
 		options.SettingName.Should().Be("rls.user_id");
-		options.UseLocalSettings.Should().BeFalse();
 		options.Enabled.Should().BeFalse();
 	}
 
@@ -114,7 +111,12 @@ public class RlsTests
 	{
 		var entityId = Guid.NewGuid().ToString();
 		var rlsProvider = new TestRlsContextProvider(entityId);
-		var options = new RlsOptions { SettingName = "myapp.user_id", UseLocalSettings = false };
+		var options = new RlsOptions 
+		{ 
+			SettingName = "myapp.user_id",
+			SqlUser = TestRlsOptions.SqlUser,
+			SqlPassword = TestRlsOptions.SqlPassword
+		};
 
 		var dbService = new DbService(TestConnectionString, NullDbEntityCache.Instance, rlsProvider, options);
 
@@ -168,8 +170,10 @@ public class RlsTests
 	[Fact]
 	public void Cache_WithDifferentEntities_ShouldGenerateDifferentKeys()
 	{
-		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
-			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var cache = new DbEntityCache(serviceProvider.GetRequiredService<Microsoft.Extensions.Caching.Hybrid.HybridCache>());
 
 		var entityId = Guid.NewGuid();
 		var entity1Context = "e:11111111-1111-1111-1111-111111111111";
@@ -189,8 +193,10 @@ public class RlsTests
 	[Fact]
 	public void Cache_CollectionKey_WithDifferentEntities_ShouldGenerateDifferentKeys()
 	{
-		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
-			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var cache = new DbEntityCache(serviceProvider.GetRequiredService<Microsoft.Extensions.Caching.Hybrid.HybridCache>());
 
 		var entity1Context = "e:11111111-1111-1111-1111-111111111111";
 		var entity2Context = "e:22222222-2222-2222-2222-222222222222";
@@ -209,8 +215,10 @@ public class RlsTests
 	[Fact]
 	public void Cache_WithEntityAndCustomClaim_ShouldIncludeBothInKey()
 	{
-		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
-			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var cache = new DbEntityCache(serviceProvider.GetRequiredService<Microsoft.Extensions.Caching.Hybrid.HybridCache>());
 
 		var entityId = Guid.NewGuid();
 		var context = "e:11111111-1111-1111-1111-111111111111|c:role:admin";
@@ -224,8 +232,10 @@ public class RlsTests
 	[Fact]
 	public void Cache_WithCustomClaims_ShouldIncludeClaimsInKey()
 	{
-		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
-			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var cache = new DbEntityCache(serviceProvider.GetRequiredService<Microsoft.Extensions.Caching.Hybrid.HybridCache>());
 
 		var entityId = Guid.NewGuid();
 		var context = "e:11111111-1111-1111-1111-111111111111|c:department:engineering,role:admin";
@@ -240,8 +250,10 @@ public class RlsTests
 	[Fact]
 	public void Cache_WithDifferentCustomClaims_ShouldGenerateDifferentKeys()
 	{
-		var cache = new DbEntityCache(new Microsoft.Extensions.Caching.Memory.MemoryCache(
-			new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+		var services = new ServiceCollection();
+		services.AddHybridCache();
+		var serviceProvider = services.BuildServiceProvider();
+		var cache = new DbEntityCache(serviceProvider.GetRequiredService<Microsoft.Extensions.Caching.Hybrid.HybridCache>());
 
 		var entityId = Guid.NewGuid();
 		var adminContext = "e:11111111-1111-1111-1111-111111111111|c:role:admin";
@@ -308,7 +320,8 @@ public class RlsTests
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(entityId));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(entityId),
+			rlsOptions: TestRlsOptions);
 		services.AddWebVellaDatabaseMigrations(new DbMigrationOptions
 		{
 			VersionTableName = tableName
@@ -435,7 +448,8 @@ public class RlsTests
 		var services = new ServiceCollection();
 		services.AddWebVellaDatabaseWithRls(
 			TestConnectionString,
-			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()));
+			rlsContextProviderFactory: _ => new TestRlsContextProvider(Guid.NewGuid().ToString()),
+			rlsOptions: TestRlsOptions);
 
 		var serviceProvider = services.BuildServiceProvider();
 

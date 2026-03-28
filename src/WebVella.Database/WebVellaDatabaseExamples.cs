@@ -157,8 +157,8 @@ public static class WebVellaDatabaseExamples
 	public static class EntityDefinitions { }
 
 	/// <summary>
-	/// Examples for <see cref="IDbService.Query{T}"/>
-	/// and <see cref="IDbService.QueryAsync{T}"/>.
+	/// Examples for <see cref="IDbService.Query{T}(string, object?)"/>
+	/// and <see cref="IDbService.QueryAsync{T}(string, object?)"/>.
 	/// Executes SQL and maps results to a collection of entities.
 	/// </summary>
 	/// <example>
@@ -206,8 +206,8 @@ public static class WebVellaDatabaseExamples
 	public static class QueryExamples { }
 
 	/// <summary>
-	/// Examples for <see cref="IDbService.QueryMultiple{T}"/>
-	/// and <see cref="IDbService.QueryMultipleAsync{T}"/>.
+	/// Examples for <see cref="IDbService.QueryMultiple{T}(string, object?)"/>
+	/// and <see cref="IDbService.QueryMultipleAsync{T}(string, object?)"/>.
 	/// Executes multiple SELECT statements and maps each result set
 	/// to properties in a container class marked with
 	/// <see cref="MultiQueryAttribute"/>.
@@ -248,8 +248,8 @@ public static class WebVellaDatabaseExamples
 	public static class QueryMultipleExamples { }
 
 	/// <summary>
-	/// Examples for <see cref="IDbService.QueryMultipleList{T}"/>
-	/// and <see cref="IDbService.QueryMultipleListAsync{T}"/>.
+	/// Examples for <see cref="IDbService.QueryMultipleList{T}(string, object?)"/>
+	/// and <see cref="IDbService.QueryMultipleListAsync{T}(string, object?)"/>.
 	/// Executes multiple SELECT statements where the first result set
 	/// contains parent entities and subsequent sets contain child entities
 	/// mapped via <see cref="ResultSetAttribute.ForeignKey"/>.

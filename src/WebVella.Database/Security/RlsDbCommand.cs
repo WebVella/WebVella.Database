@@ -40,11 +40,13 @@ internal sealed class RlsDbCommand : BaseDbCommand
 	public override string CommandText
 	{
 		get => _commandText;
+#pragma warning disable CS8765 // Nullability mismatch: base DbCommand.CommandText setter is not nullable-annotated in .NET
 		set
 		{
 			_commandText = value ?? string.Empty;
 			_inner.CommandText = BuildEffectiveCommandText(_commandText);
 		}
+#pragma warning restore CS8765
 	}
 
 	public override int CommandTimeout

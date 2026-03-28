@@ -1815,7 +1815,7 @@ await using var scope = await _db.CreateTransactionScopeAsync(
 
 ## Caching
 
-Entities marked with `[Cacheable]` are automatically cached and invalidated.
+WebVella.Database uses **Microsoft.Extensions.Caching.Hybrid v10.4.0** for modern, high-performance caching with async-first operations and tag-based invalidation.
 
 ### Cacheable Entity Configuration
 
@@ -1836,18 +1836,64 @@ public class Setting { }
 ### Cache Behavior
 
 ```csharp
-// First call: fetches from database and caches
+// First call: fetches from database and caches with table tag
 var categories = await _db.GetListAsync<Category>();
 
 // Second call: returns from cache
 var categories = await _db.GetListAsync<Category>();
 
-// Insert/Update/Delete automatically invalidates cache
+// Insert/Update/Delete automatically invalidates cache by table tag
 await _db.InsertAsync(new Category { Name = "New Category" });
-// Cache is invalidated
+// Cache is invalidated via tag: "table:categories"
 
 // Next call fetches fresh data
 var categories = await _db.GetListAsync<Category>();
+```
+
+### HybridCache Features
+
+WebVella.Database leverages HybridCache for:
+
+- **Async-first**: All cache operations are fully async for better scalability
+- **Tag-based invalidation**: Automatic invalidation of all cached entries for a table
+- **Distributed cache ready**: Built-in support for L1 (in-memory) and L2 (distributed) caching
+- **Stampede protection**: Prevents cache stampede when multiple requests hit the same key
+- **RLS-aware**: Cache keys include RLS context to isolate cached data per tenant/user
+
+### Cache Registration
+
+```csharp
+// Enable caching during registration
+builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
+
+// Or disable caching
+builder.Services.AddWebVellaDatabase(connectionString, enableCaching: false);
+```
+
+### Cache Invalidation
+
+Cache invalidation happens automatically:
+
+```csharp
+// Automatic invalidation on mutations
+await _db.InsertAsync(product);  // Invalidates "table:products" tag
+await _db.UpdateAsync(product);  // Invalidates "table:products" tag
+await _db.DeleteAsync<Product>(id); // Invalidates "table:products" tag
+
+// All cached queries for products are now invalidated
+```
+
+### RLS-Aware Caching
+
+When using Row Level Security, cache keys include the RLS context:
+
+```csharp
+// User A (entity_id = "tenant-1")
+var products = await _db.GetListAsync<Product>(); // Cached with key containing "tenant-1"
+
+// User B (entity_id = "tenant-2")
+var products = await _db.GetListAsync<Product>(); // Different cache entry for "tenant-2"
+```
 ```
 
 ### Enabling Cache
@@ -1923,8 +1969,9 @@ builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(
     rlsOptions: new RlsOptions
     {
         SettingName = "myapp.user_id", // Default: "app.user_id"
-        UseLocalSettings = true,        // Default: true (transaction-scoped)
-        Enabled = true                  // Default: true
+        Enabled = true,                 // Default: true
+        SqlUser = "app_user",          // PostgreSQL role for RLS
+        SqlPassword = "password"       // Password for RLS role
     });
 
 // With factory pattern
@@ -1971,8 +2018,7 @@ CREATE POLICY order_access ON orders
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `SettingName` | `"app.user_id"` | Full PostgreSQL session variable name for the entity identifier (e.g., `app.user_id`) |
-| `UseLocalSettings` | `true` | When `true`, variables are transaction-scoped; when `false`, session-scoped |
+| `SettingName` | `"app.user_id"` | Full PostgreSQL session variable name for the entity identifier (e.g., `app.user_id`). Variables are always transaction-scoped (LOCAL). |
 | `Enabled` | `true` | Set to `false` to bypass RLS (useful for admin/migration scenarios) |
 
 ### Session Variables Reference

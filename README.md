@@ -10,6 +10,17 @@ Checkout our other projects:
 [Data collaboration - Tefter.bg](https://github.com/WebVella/WebVella.Tefter)  
 [Document template generation](https://github.com/WebVella/WebVella.DocumentTemplates)  
 
+## 🚀 What's New in v1.4.0
+
+**HybridCache Migration** - Upgraded to `Microsoft.Extensions.Caching.Hybrid` v10.4.0 for modern, high-performance caching:
+- ✨ **Async-first API**: All cache operations are fully async
+- ✨ **Tag-based invalidation**: Invalidate multiple cache entries with a single tag
+- ✨ **Distributed cache ready**: Built-in L1 (memory) + L2 (distributed) support
+- ✨ **Better performance**: Stampede protection, optimized serialization
+- 💥 **Breaking**: `IDbEntityCache` methods are now async (`GetOrCreateAsync`, `InvalidateByTagAsync`)
+- 💥 **Removed**: `RlsOptions.UseLocalSettings` - RLS variables are always transaction-scoped (LOCAL)
+
+See [CHANGELOG.md](CHANGELOG.md) for migration guide.
 
 ## What is WebVella.Database?
 A lightweight, high-performance Postgres data access library built on Dapper. It simplifies data object mapping, migrations and complex database workflows by providing first-class support for nested transactions and effortless advisory lock management.
@@ -29,7 +40,7 @@ GitHub stars guide developers toward great tools. If you find this project valua
 - **Nested transaction support** - Create transaction scopes that properly handle nesting
 - **PostgreSQL advisory locks** - Easy-to-use advisory lock scopes for distributed locking
 - **Row Level Security (RLS)** - Built-in support for PostgreSQL RLS with automatic session context
-- **Entity caching** - Optional in-memory caching with automatic invalidation (RLS-aware)
+- **Entity caching with HybridCache** - Modern async-first caching with tag-based invalidation and distributed cache support (RLS-aware)
 - **JSON column support** - Automatic serialization/deserialization of JSON columns
 - **Attribute-based mapping** - Use attributes like `[Table]`, `[Key]`, `[JsonColumn]`, and more
 - **Database migrations** - Version-controlled schema migrations with rollback support

@@ -1,5 +1,59 @@
 # WebVella.Database Changelog
 
+## [1.4.0] - 2026-03-28
+
+### 🚀 Major Changes
+- **HybridCache Migration**: Replaced `IMemoryCache` with `Microsoft.Extensions.Caching.Hybrid` v10.4.0 for modern, high-performance caching
+  - **Async-first API**: All cache operations are now fully async (`GetOrCreateAsync`, `GetOrCreateCollectionAsync`)
+  - **Tag-based invalidation**: Use `InvalidateByTagAsync(tag)` to invalidate multiple cache entries at once
+  - **Distributed cache ready**: Built-in support for both in-memory (L1) and distributed (L2) caching
+  - **Better performance**: Optimized serialization, stampede protection, and memory management
+  - **Backward compatible**: All existing caching functionality preserved
+
+### 💥 Breaking Changes
+- **`IDbEntityCache` interface redesigned**: All methods are now async
+  - `GetOrCreate` → `GetOrCreateAsync`
+  - `GetOrCreateCollection` → `GetOrCreateCollectionAsync`
+  - `Invalidate` → `InvalidateByTagAsync`
+  - Removed synchronous cache inspection methods (`TryGet`, `TryGetCollection`)
+- **`RlsOptions.UseLocalSettings` removed**: RLS session variables are always transaction-scoped (LOCAL) by default
+  - Update code: Remove any references to `UseLocalSettings` property
+  - Behavior: All RLS variables now use `SET LOCAL` for proper transaction isolation
+
+### ✨ What to do
+No changes required for most users - the migration is transparent. If you were using custom cache implementations:
+
+**Before:**
+```csharp
+var cached = cache.GetOrCreate<User>(
+    key,
+    () => GetUserFromDatabase(id),
+    durationSeconds: 60);
+```
+
+**After:**
+```csharp
+var cached = await cache.GetOrCreateAsync<User>(
+    key,
+    async ct => await GetUserFromDatabaseAsync(id, ct),
+    durationSeconds: 60,
+    tags: new[] { "table:users" });
+
+// Later, invalidate all users cache
+await cache.InvalidateByTagAsync("table:users");
+```
+
+For RLS options:
+```csharp
+// Before
+new RlsOptions { UseLocalSettings = true }
+
+// After
+new RlsOptions()  // Always uses LOCAL settings
+```
+
+---
+
 ## [1.3.1] - 2026-06-02
 
 ### ✨ New Features

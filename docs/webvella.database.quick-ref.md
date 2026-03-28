@@ -12,8 +12,9 @@ dotnet add package WebVella.Database
 builder.Services.AddWebVellaDatabase("Host=localhost;Database=mydb;Username=user;Password=pass");
 ```
 
-### With Caching
+### With Caching (HybridCache)
 ```csharp
+// Enables Microsoft.Extensions.Caching.Hybrid v10.4.0 for modern async-first caching
 builder.Services.AddWebVellaDatabase(connectionString, enableCaching: true);
 ```
 
@@ -29,7 +30,7 @@ public class HttpRlsContextProvider : IRlsContextProvider
     private string? GetClaim(string type) => _httpContextAccessor.HttpContext?.User?.FindFirst(type)?.Value;
 }
 
-builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionString);
+builder.Services.AddWebVellaDatabaseWithRls<HttpRlsContextProvider>(connectionString, enableCaching: true);
 ```
 
 ### Temporarily Disabling RLS
@@ -247,10 +248,29 @@ var userCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users");
 | **Nested Transactions** | Automatic PostgreSQL savepoint management |
 | **Advisory Locks** | Distributed coordination with simple scopes |
 | **Row Level Security** | Automatic session context for multi-tenancy |
-| **Entity Caching** | `[Cacheable]` attribute with RLS-aware keys |
+| **HybridCache Caching** | `[Cacheable]` attribute with async-first caching, tag-based invalidation, and RLS-aware keys |
 | **JSON Columns** | `[JsonColumn]` for automatic serialization |
 | **Migrations** | Version-controlled schema changes |
 | **Composite Keys** | Support for multi-column primary keys |
+
+## Caching with HybridCache
+
+```csharp
+// Mark entity as cacheable
+[Cacheable(DurationSeconds = 600)]
+public class Product { }
+
+// Automatic caching on reads
+var product = await _db.GetAsync<Product>(id); // Cached
+var products = await _db.GetListAsync<Product>(); // Cached
+
+// Automatic invalidation on mutations
+await _db.InsertAsync(product);  // Invalidates all Product cache via "table:products" tag
+await _db.UpdateAsync(product);  // Invalidates all Product cache
+await _db.DeleteAsync<Product>(id); // Invalidates all Product cache
+
+// Tag-based invalidation happens automatically - no manual cache management needed!
+```
 
 ## Documentation
 - 📖 [Complete Documentation](https://github.com/WebVella/WebVella.Database/blob/main/docs/webvella.database.docs.md)

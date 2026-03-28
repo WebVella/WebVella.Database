@@ -2,7 +2,6 @@
   <Folder Name="/docs/">
     <File Path="docs/index.md" />
     <File Path="docs/quick-reference.md" />
-    <File Path="docs/reddit.md" />
   </Folder>
   <Project Path="src/WebVella.Database/WebVella.Database.csproj" />
   <Project Path="tests/WebVella.Database.Tests/WebVella.Database.Tests.csproj" />

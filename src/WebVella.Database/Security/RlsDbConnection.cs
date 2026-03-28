@@ -35,7 +35,9 @@ internal sealed class RlsDbConnection : BaseDbConnection
 	public override string ConnectionString
 	{
 		get => _inner.ConnectionString;
+#pragma warning disable CS8765 // Nullability mismatch: base DbConnection.ConnectionString setter is not nullable-annotated in .NET
 		set => _inner.ConnectionString = value;
+#pragma warning restore CS8765
 	}
 
 	public override string Database => _inner.Database;
