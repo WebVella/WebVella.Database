@@ -969,20 +969,42 @@ public class DbService : IDbService
 	/// <inheritdoc/>
 	public IEnumerable<T> Query<T>(string sql, object? parameters = null) where T : class
 	{
+		var metadata = EntityMetadata.GetOrCreate<T>();
+
 		using var conn = CreateConnection();
 		var dapperConn = GetDapperConnection(conn);
 
-		var result = dapperConn.Query<T>(sql, parameters, transaction: null);
+		var result = dapperConn.Query<T>(sql, parameters, transaction: null).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in result)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
+
 		return result;
 	}
 
 	/// <inheritdoc/>
 	public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? parameters = null) where T : class
 	{
+		var metadata = EntityMetadata.GetOrCreate<T>();
+
 		await using var conn = await CreateConnectionAsync();
 		var dapperConn = GetDapperConnection(conn);
 
-		var result = await dapperConn.QueryAsync<T>(sql, parameters, transaction: null);
+		var result = (await dapperConn.QueryAsync<T>(sql, parameters, transaction: null)).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in result)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
+
 		return result;
 	}
 
@@ -1003,11 +1025,32 @@ public class DbService : IDbService
 			if (multi.IsConsumed)
 				break;
 
-			var value = mapping.IsCollection
-				? multi.Read(mapping.ElementType).ToListOfType(mapping.ElementType)
-				: multi.ReadFirstOrDefault(mapping.ElementType);
-
-			mapping.Property.SetValue(result, value);
+			if (mapping.IsCollection)
+			{
+				var collection = multi.Read(mapping.ElementType).ToListOfType(mapping.ElementType);
+				var entityMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+				if (entityMetadata.JsonColumnProperties.Count > 0)
+				{
+					foreach (var item in (System.Collections.IEnumerable)collection)
+					{
+						DeserializeJsonColumns(item, entityMetadata);
+					}
+				}
+				mapping.Property.SetValue(result, collection);
+			}
+			else
+			{
+				var value = multi.ReadFirstOrDefault(mapping.ElementType);
+				if (value != null)
+				{
+					var entityMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+					if (entityMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(value, entityMetadata);
+					}
+				}
+				mapping.Property.SetValue(result, value);
+			}
 		}
 
 		return result;
@@ -1030,11 +1073,32 @@ public class DbService : IDbService
 			if (multi.IsConsumed)
 				break;
 
-			var value = mapping.IsCollection
-				? (await multi.ReadAsync(mapping.ElementType)).ToListOfType(mapping.ElementType)
-				: await multi.ReadFirstOrDefaultAsync(mapping.ElementType);
-
-			mapping.Property.SetValue(result, value);
+			if (mapping.IsCollection)
+			{
+				var collection = (await multi.ReadAsync(mapping.ElementType)).ToListOfType(mapping.ElementType);
+				var entityMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+				if (entityMetadata.JsonColumnProperties.Count > 0)
+				{
+					foreach (var item in (System.Collections.IEnumerable)collection)
+					{
+						DeserializeJsonColumns(item, entityMetadata);
+					}
+				}
+				mapping.Property.SetValue(result, collection);
+			}
+			else
+			{
+				var value = await multi.ReadFirstOrDefaultAsync(mapping.ElementType);
+				if (value != null)
+				{
+					var entityMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+					if (entityMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(value, entityMetadata);
+					}
+				}
+				mapping.Property.SetValue(result, value);
+			}
 		}
 
 		return result;
@@ -1222,6 +1286,9 @@ public class DbService : IDbService
 		object? parameters = null)
 		where TParent : class where TChild : class
 	{
+		var parentMetadata = EntityMetadata.GetOrCreate<TParent>();
+		var childMetadata = EntityMetadata.GetOrCreate<TChild>();
+
 		using var conn = CreateConnection();
 		var dapperConn = GetDapperConnection(conn);
 
@@ -1236,6 +1303,10 @@ public class DbService : IDbService
 
 				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
 				{
+					if (parentMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(parent, parentMetadata);
+					}
 					existingParent = parent;
 					parentLookup[parentKey] = existingParent;
 				}
@@ -1245,6 +1316,10 @@ public class DbService : IDbService
 					var childKey = childKeySelector(child);
 					if (childKey != null && childAdded.Add((parentKey, childKey)))
 					{
+						if (childMetadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child, childMetadata);
+						}
 						childSelector(existingParent).Add(child);
 					}
 				}
@@ -1268,6 +1343,9 @@ public class DbService : IDbService
 		object? parameters = null)
 		where TParent : class where TChild : class
 	{
+		var parentMetadata = EntityMetadata.GetOrCreate<TParent>();
+		var childMetadata = EntityMetadata.GetOrCreate<TChild>();
+
 		await using var conn = await CreateConnectionAsync();
 		var dapperConn = GetDapperConnection(conn);
 
@@ -1282,6 +1360,10 @@ public class DbService : IDbService
 
 				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
 				{
+					if (parentMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(parent, parentMetadata);
+					}
 					existingParent = parent;
 					parentLookup[parentKey] = existingParent;
 				}
@@ -1291,6 +1373,10 @@ public class DbService : IDbService
 					var childKey = childKeySelector(child);
 					if (childKey != null && childAdded.Add((parentKey, childKey)))
 					{
+						if (childMetadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child, childMetadata);
+						}
 						childSelector(existingParent).Add(child);
 					}
 				}
@@ -1316,6 +1402,10 @@ public class DbService : IDbService
 		object? parameters = null)
 		where TParent : class where TChild1 : class where TChild2 : class
 	{
+		var parentMetadata = EntityMetadata.GetOrCreate<TParent>();
+		var child1Metadata = EntityMetadata.GetOrCreate<TChild1>();
+		var child2Metadata = EntityMetadata.GetOrCreate<TChild2>();
+
 		using var conn = CreateConnection();
 		var dapperConn = GetDapperConnection(conn);
 
@@ -1331,6 +1421,10 @@ public class DbService : IDbService
 
 				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
 				{
+					if (parentMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(parent, parentMetadata);
+					}
 					existingParent = parent;
 					parentLookup[parentKey] = existingParent;
 				}
@@ -1340,6 +1434,10 @@ public class DbService : IDbService
 					var childKey1 = childKeySelector1(child1);
 					if (childKey1 != null && child1Added.Add((parentKey, childKey1)))
 					{
+						if (child1Metadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child1, child1Metadata);
+						}
 						childSelector1(existingParent).Add(child1);
 					}
 				}
@@ -1349,6 +1447,10 @@ public class DbService : IDbService
 					var childKey2 = childKeySelector2(child2);
 					if (childKey2 != null && child2Added.Add((parentKey, childKey2)))
 					{
+						if (child2Metadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child2, child2Metadata);
+						}
 						childSelector2(existingParent).Add(child2);
 					}
 				}
@@ -1374,6 +1476,10 @@ public class DbService : IDbService
 		object? parameters = null)
 		where TParent : class where TChild1 : class where TChild2 : class
 	{
+		var parentMetadata = EntityMetadata.GetOrCreate<TParent>();
+		var child1Metadata = EntityMetadata.GetOrCreate<TChild1>();
+		var child2Metadata = EntityMetadata.GetOrCreate<TChild2>();
+
 		await using var conn = await CreateConnectionAsync();
 		var dapperConn = GetDapperConnection(conn);
 
@@ -1389,6 +1495,10 @@ public class DbService : IDbService
 
 				if (!parentLookup.TryGetValue(parentKey, out var existingParent))
 				{
+					if (parentMetadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(parent, parentMetadata);
+					}
 					existingParent = parent;
 					parentLookup[parentKey] = existingParent;
 				}
@@ -1398,6 +1508,10 @@ public class DbService : IDbService
 					var childKey1 = childKeySelector1(child1);
 					if (childKey1 != null && child1Added.Add((parentKey, childKey1)))
 					{
+						if (child1Metadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child1, child1Metadata);
+						}
 						childSelector1(existingParent).Add(child1);
 					}
 				}
@@ -1407,6 +1521,10 @@ public class DbService : IDbService
 					var childKey2 = childKeySelector2(child2);
 					if (childKey2 != null && child2Added.Add((parentKey, childKey2)))
 					{
+						if (child2Metadata.JsonColumnProperties.Count > 0)
+						{
+							DeserializeJsonColumns(child2, child2Metadata);
+						}
 						childSelector2(existingParent).Add(child2);
 					}
 				}
@@ -1996,7 +2114,7 @@ public class DbService : IDbService
 		{
 			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
-			return _cache.GetOrCreateAsync<T>(cacheKey,
+			var cachedResult = _cache.GetOrCreateAsync<T>(cacheKey,
 				_ =>
 				{
 					using var conn = CreateConnection();
@@ -2005,11 +2123,16 @@ public class DbService : IDbService
 					foreach (var keyProp in metadata.KeyProperties)
 						parameters.Add(keyProp.Name, keys[keyProp.Name]);
 					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
-					return ValueTask.FromResult(
-						dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null));
+					var entity = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
+					if (entity != null && metadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(entity, metadata);
+					}
+					return ValueTask.FromResult(entity);
 				},
 				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags)
 				.GetAwaiter().GetResult();
+			return cachedResult;
 		}
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
@@ -2023,7 +2146,13 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		return dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
+		var result = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
+		if (result != null && metadata.JsonColumnProperties.Count > 0)
+		{
+			DeserializeJsonColumns(result, metadata);
+		}
+
+		return result;
 	}
 
 	/// <inheritdoc/>
@@ -2049,7 +2178,7 @@ public class DbService : IDbService
 		{
 			var cacheKey = _cache.GenerateKey<T>(keys, GetRlsCacheContext());
 			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
-			return await _cache.GetOrCreateAsync<T>(cacheKey,
+			var cachedResult = await _cache.GetOrCreateAsync<T>(cacheKey,
 				async _ =>
 				{
 					await using var conn = await CreateConnectionAsync();
@@ -2058,9 +2187,15 @@ public class DbService : IDbService
 					foreach (var keyProp in metadata.KeyProperties)
 						parameters.Add(keyProp.Name, keys[keyProp.Name]);
 					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
-					return await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+					var entity = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+					if (entity != null && metadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(entity, metadata);
+					}
+					return entity;
 				},
 				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags);
+			return cachedResult;
 		}
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} WHERE {metadata.KeyWhereClause}";
@@ -2074,7 +2209,13 @@ public class DbService : IDbService
 			parameters.Add(keyProp.Name, keys[keyProp.Name]);
 		}
 
-		return await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+		var result = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
+		if (result != null && metadata.JsonColumnProperties.Count > 0)
+		{
+			DeserializeJsonColumns(result, metadata);
+		}
+
+		return result;
 	}
 
 	/// <inheritdoc/>
@@ -2107,17 +2248,25 @@ public class DbService : IDbService
 		{
 			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
-			return _cache.GetOrCreateCollectionAsync<T>(cacheKey,
+			var cachedResult = _cache.GetOrCreateCollectionAsync<T>(cacheKey,
 				_ =>
 				{
 					using var conn = CreateConnection();
 					var dapperConn = GetDapperConnection(conn);
 					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
-					return ValueTask.FromResult<IEnumerable<T>>(
-						dapperConn.Query<T>(sql, transaction: null).ToList());
+					var entities = dapperConn.Query<T>(sql, transaction: null).ToList();
+					if (metadata.JsonColumnProperties.Count > 0)
+					{
+						foreach (var entity in entities)
+						{
+							DeserializeJsonColumns(entity, metadata);
+						}
+					}
+					return ValueTask.FromResult<IEnumerable<T>>(entities);
 				},
 				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags)
 				.GetAwaiter().GetResult();
+			return cachedResult;
 		}
 
 		using var conn = CreateConnection();
@@ -2125,6 +2274,14 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
 		var entities = dapperConn.Query<T>(sql, transaction: null).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in entities)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
 
 		return entities;
 	}
@@ -2139,15 +2296,24 @@ public class DbService : IDbService
 		{
 			var cacheKey = _cache.GenerateCollectionKey<T>(null, GetRlsCacheContext());
 			var tags = (IReadOnlyCollection<string>)[GetTableTag(metadata.TableName)];
-			return await _cache.GetOrCreateCollectionAsync<T>(cacheKey,
+			var cachedResult = await _cache.GetOrCreateCollectionAsync<T>(cacheKey,
 				async _ =>
 				{
 					await using var conn = await CreateConnectionAsync();
 					var dapperConn = GetDapperConnection(conn);
 					var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
-					return (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
+					var entities = (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
+					if (metadata.JsonColumnProperties.Count > 0)
+					{
+						foreach (var entity in entities)
+						{
+							DeserializeJsonColumns(entity, metadata);
+						}
+					}
+					return (IEnumerable<T>)entities;
 				},
 				metadata.CacheDurationSeconds, metadata.CacheSlidingExpiration, tags);
+			return cachedResult;
 		}
 
 		await using var conn = await CreateConnectionAsync();
@@ -2155,6 +2321,14 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName}";
 		var entities = (await dapperConn.QueryAsync<T>(sql, transaction: null)).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in entities)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
 
 		return entities;
 	}
@@ -2184,7 +2358,16 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 			$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
-		var result = dapperConn.Query<T>(sql, new { Ids = idList }, transaction: null);
+		var result = dapperConn.Query<T>(sql, new { Ids = idList }, transaction: null).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in result)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
+
 		return result;
 	}
 
@@ -2213,7 +2396,16 @@ public class DbService : IDbService
 
 		var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 			$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
-		var result = await dapperConn.QueryAsync<T>(sql, new { Ids = idList }, transaction: null);
+		var result = (await dapperConn.QueryAsync<T>(sql, new { Ids = idList }, transaction: null)).ToList();
+
+		if (metadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var entity in result)
+			{
+				DeserializeJsonColumns(entity, metadata);
+			}
+		}
+
 		return result;
 	}
 
@@ -2253,7 +2445,16 @@ public class DbService : IDbService
 			var sql = $"SELECT {metadata.SelectColumns} FROM {metadata.TableName} " +
 				$"WHERE {metadata.FirstKeyColumnName} = ANY(@Ids)";
 
-			var entities = dapperConn.Query<T>(sql, new { Ids = ids }, transaction: null);
+			var entities = dapperConn.Query<T>(sql, new { Ids = ids }, transaction: null).ToList();
+
+			if (metadata.JsonColumnProperties.Count > 0)
+			{
+				foreach (var entity in entities)
+				{
+					DeserializeJsonColumns(entity, metadata);
+				}
+			}
+
 			return entities;
 		}
 		else
@@ -2273,6 +2474,10 @@ public class DbService : IDbService
 				var entity = dapperConn.QueryFirstOrDefault<T>(sql, parameters, transaction: null);
 				if (entity != null)
 				{
+					if (metadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(entity, metadata);
+					}
 					results.Add(entity);
 				}
 			}
@@ -2336,6 +2541,10 @@ public class DbService : IDbService
 				var entity = await dapperConn.QueryFirstOrDefaultAsync<T>(sql, parameters, transaction: null);
 				if (entity != null)
 				{
+					if (metadata.JsonColumnProperties.Count > 0)
+					{
+						DeserializeJsonColumns(entity, metadata);
+					}
 					results.Add(entity);
 				}
 			}
