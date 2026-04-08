@@ -969,19 +969,24 @@ public class DbService : IDbService
 	/// <inheritdoc/>
 	public IEnumerable<T> Query<T>(string sql, object? parameters = null) where T : class
 	{
-		var metadata = EntityMetadata.GetOrCreate<T>();
-
 		using var conn = CreateConnection();
 		var dapperConn = GetDapperConnection(conn);
 
 		var result = dapperConn.Query<T>(sql, parameters, transaction: null).ToList();
 
-		if (metadata.JsonColumnProperties.Count > 0)
+		try
 		{
-			foreach (var entity in result)
+			var metadata = EntityMetadata.GetOrCreate<T>();
+			if (metadata.JsonColumnProperties.Count > 0)
 			{
-				DeserializeJsonColumns(entity, metadata);
+				foreach (var entity in result)
+				{
+					DeserializeJsonColumns(entity, metadata);
+				}
 			}
+		}
+		catch (InvalidOperationException)
+		{
 		}
 
 		return result;
@@ -990,19 +995,24 @@ public class DbService : IDbService
 	/// <inheritdoc/>
 	public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? parameters = null) where T : class
 	{
-		var metadata = EntityMetadata.GetOrCreate<T>();
-
 		await using var conn = await CreateConnectionAsync();
 		var dapperConn = GetDapperConnection(conn);
 
 		var result = (await dapperConn.QueryAsync<T>(sql, parameters, transaction: null)).ToList();
 
-		if (metadata.JsonColumnProperties.Count > 0)
+		try
 		{
-			foreach (var entity in result)
+			var metadata = EntityMetadata.GetOrCreate<T>();
+			if (metadata.JsonColumnProperties.Count > 0)
 			{
-				DeserializeJsonColumns(entity, metadata);
+				foreach (var entity in result)
+				{
+					DeserializeJsonColumns(entity, metadata);
+				}
 			}
+		}
+		catch (InvalidOperationException)
+		{
 		}
 
 		return result;

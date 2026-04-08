@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
 		// Register Dapper type handlers (only once)
 		RegisterDapperTypeHandlers();
 
-		// Scan assemblies for JsonColumn attributes
+		// Scan assemblies for JsonColumn attributes and Dapper mappings
 		var assembliesToScan = assemblies.Length > 0
 			? assemblies
 			: GetApplicationAssemblies();
@@ -62,6 +62,7 @@ public static class ServiceCollectionExtensions
 		foreach (var assembly in assembliesToScan)
 		{
 			JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
+			DapperColumnMapperExtensions.RegisterDapperMappingsFromAssembly(assembly);
 		}
 
 		// Register caching if enabled
@@ -133,7 +134,7 @@ public static class ServiceCollectionExtensions
 		// Register Dapper type handlers (only once)
 		RegisterDapperTypeHandlers();
 
-		// Scan assemblies for JsonColumn attributes
+		// Scan assemblies for JsonColumn attributes and Dapper mappings
 		var assembliesToScan = assemblies.Length > 0
 			? assemblies
 			: GetApplicationAssemblies();
@@ -141,6 +142,7 @@ public static class ServiceCollectionExtensions
 		foreach (var assembly in assembliesToScan)
 		{
 			JsonColumnTypeHandlerExtensions.RegisterJsonColumnsFromAssembly(assembly);
+			DapperColumnMapperExtensions.RegisterDapperMappingsFromAssembly(assembly);
 		}
 
 		// Register caching if enabled
