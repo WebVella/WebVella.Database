@@ -10,6 +10,28 @@ Checkout our other projects:
 [Data collaboration - Tefter.bg](https://github.com/WebVella/WebVella.Tefter)  
 [Document template generation](https://github.com/WebVella/WebVella.DocumentTemplates)  
 
+## 🚀 What's New in v1.5.0
+
+**PostgreSQL ltree Extension Support** - Full support for hierarchical data queries:
+- ✨ **8 ltree operators**: `LtreeIsAncestorOf`, `LtreeIsDescendantOf`, `LtreeMatchesLQuery`, and more
+- ✨ **Expression-based queries**: Use ltree methods directly in `.Where()` predicates
+- ✨ **Type-safe**: Full IntelliSense support with comprehensive XML documentation
+- ✨ **37 unit tests**: Complete test coverage for all ltree operations
+
+**QueryMultipleList JSON Column Fix**:
+- ✨ **Automatic JSON deserialization**: `[JsonColumn]` now works correctly in `QueryMultipleList` and `QueryMultipleListAsync`
+- ✨ **Parent and child support**: JSON columns are deserialized in both parent entities and their child collections
+- ✨ **Null-safe**: Graceful handling of null JSON values
+
+**DbJoin Attribute Infrastructure** (Preview):
+- 🚧 **Attribute-based joins**: New `[DbJoin]` attribute for declaring relationships
+- 🚧 **Auto-detection**: Entity metadata detects and excludes join properties from INSERT/UPDATE
+- 🚧 **Foundation work**: Core infrastructure ready for future Query integration
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
+
+---
+
 ## 🚀 What's New in v1.4.0
 
 **HybridCache Migration** - Upgraded to `Microsoft.Extensions.Caching.Hybrid` for modern, high-performance caching:
@@ -36,13 +58,14 @@ GitHub stars guide developers toward great tools. If you find this project valua
 
 - **Dapper-based CRUD operations** - Simple Insert, Update, Delete, Get, and Query methods
 - **Fluent query builder** - Type-safe, expression-based queries with WHERE, ORDER BY, paging, COUNT, and EXISTS — no SQL strings needed
+- **PostgreSQL ltree support** - Full support for hierarchical data with 8 ltree operators (`@>`, `<@`, `~`, `@`, `?`, `?&`) in expression-based queries
 - **SQL-free parent-child queries** - `QueryMultipleList<T>()` and `QueryWithJoin<T>()` auto-generate SQL from entity metadata
 - **Nested transaction support** - Create transaction scopes that properly handle nesting
 - **PostgreSQL advisory locks** - Easy-to-use advisory lock scopes for distributed locking
 - **Row Level Security (RLS)** - Built-in support for PostgreSQL RLS with automatic session context
 - **Entity caching with HybridCache** - Modern async-first caching with tag-based invalidation and distributed cache support (RLS-aware)
-- **JSON column support** - Automatic serialization/deserialization of JSON columns
-- **Attribute-based mapping** - Use attributes like `[Table]`, `[Key]`, `[JsonColumn]`, and more
+- **JSON column support** - Automatic serialization/deserialization of JSON columns (including in `QueryMultipleList`)
+- **Attribute-based mapping** - Use attributes like `[Table]`, `[Key]`, `[JsonColumn]`, `[DbJoin]`, and more
 - **Database migrations** - Version-controlled schema migrations with rollback support
 
 ## Setup
@@ -265,7 +288,64 @@ var user = await _db.Query<User>()
 - Case-insensitive: `.ILikeContains()`, `.ILikeStartsWith()`, `.ILikeEndsWith()` → `ILIKE`
 - Case-folding: `e.Name.ToLower() == "x"` → `LOWER(name) = @p`
 - Collection: `list.Contains(e.Id)` → `id = ANY(@p)`
+- **PostgreSQL ltree**: `.LtreeIsAncestorOf()`, `.LtreeIsDescendantOf()`, `.LtreeMatchesLQuery()`, and more
 - Enum values are automatically mapped to their underlying `int`
+
+### PostgreSQL ltree Hierarchical Queries
+
+Full support for PostgreSQL ltree extension with 8 specialized operators. Enable the extension first:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS ltree;
+CREATE INDEX idx_categories_path_gist ON categories USING GIST (path);
+```
+
+Then use ltree methods directly in `.Where()` expressions:
+
+```csharp
+// Find all parent categories
+var parents = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsAncestorOf("root.electronics.phones"))
+    .ToListAsync();
+// SQL: WHERE path @> 'root.electronics.phones'::ltree
+// Returns: root, root.electronics
+
+// Find all subcategories
+var children = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsDescendantOf("root.electronics"))
+    .ToListAsync();
+// SQL: WHERE path <@ 'root.electronics'::ltree
+
+// Pattern matching with wildcards
+var matches = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeMatchesLQuery("root.*.phones"))
+    .ToListAsync();
+// SQL: WHERE path ~ 'root.*.phones'::lquery
+
+// Full-text search on path labels
+var textMatches = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeMatchesLTxtQuery("electronics & phones"))
+    .ToListAsync();
+// SQL: WHERE path @ 'electronics & phones'::ltxtquery
+
+// Check if path matches any of given paths
+var anyMatch = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeContainsAny("root.electronics", "root.appliances"))
+    .ToListAsync();
+// SQL: WHERE path ? ARRAY['root.electronics', 'root.appliances']
+```
+
+**Available ltree operators:**
+- `LtreeIsAncestorOf(path)` - Path is ancestor of specified path (`@>`)
+- `LtreeIsDescendantOf(path)` - Path is descendant of specified path (`<@`)
+- `LtreeIsAncestorOrEqual(path)` - Path is ancestor or equal (`@>` with OR)
+- `LtreeIsDescendantOrEqual(path)` - Path is descendant or equal (`<@` with OR)
+- `LtreeMatchesLQuery(pattern)` - Match lquery pattern with wildcards (`~`)
+- `LtreeMatchesLTxtQuery(query)` - Full-text search on path labels (`@`)
+- `LtreeContainsAny(paths)` - Match any of the specified paths (`?`)
+- `LtreeContainsAll(paths)` - Path contains all specified labels (`?&`)
+
+See [ltree feature documentation](docs/ltree-feature-summary.md) for complete details.
 
 ### SQL-Free Parent-Child Queries
 

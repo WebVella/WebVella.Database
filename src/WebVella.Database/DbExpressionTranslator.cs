@@ -17,6 +17,8 @@ namespace WebVella.Database;
 /// <item>Case-folding: <c>e.Name.ToLower() == "x"</c> → <c>LOWER(name) = @p</c></item>
 /// <item>Case-folding: <c>e.Name.ToUpper() == "X"</c> → <c>UPPER(name) = @p</c></item>
 /// <item>Collection membership: <c>list.Contains(e.Id)</c> → <c>id = ANY(@p)</c></item>
+/// <item>Ltree hierarchy: <c>e.Path.LtreeIsAncestorOf("root.child")</c> → <c>path @> 'root.child'::ltree</c></item>
+/// <item>Ltree patterns: <c>e.Path.LtreeMatchesLQuery("root.*")</c> → <c>path ~ 'root.*'::lquery</c></item>
 /// <item>Captured variables and closures</item>
 /// </list>
 /// Enum values are automatically converted to their underlying <c>int</c> value.
@@ -237,7 +239,8 @@ internal sealed class DbExpressionTranslator<T> where T : class
 				if (expr.Method.DeclaringType == typeof(DbStringExtensions)
 					&& expr.Method.IsStatic && expr.Arguments.Count == 2
 					&& expr.Arguments[0] is MemberExpression
-						{ Expression: ParameterExpression } ilikeProp)
+						{ Expression: ParameterExpression } ilikeProp
+					&& expr.Method.Name is "ILikeContains" or "ILikeStartsWith" or "ILikeEndsWith")
 				{
 					var col = Col(ilikeProp.Member.Name);
 					var arg = Evaluate(expr.Arguments[1])?.ToString() ?? string.Empty;
@@ -249,6 +252,61 @@ internal sealed class DbExpressionTranslator<T> where T : class
 						"ILikeEndsWith"   => $"{col} ILIKE {Param($"%{EscapeLike(arg)}")}",
 						_ => throw new NotSupportedException(
 							$"DbStringExtensions method '{expr.Method.Name}' is not supported.")
+					};
+				}
+
+				// PostgreSQL ltree extension methods
+				if (expr.Method.DeclaringType == typeof(DbStringExtensions)
+					&& expr.Method.IsStatic
+					&& expr.Arguments[0] is MemberExpression
+						{ Expression: ParameterExpression } ltreeProp)
+				{
+					var col = Col(ltreeProp.Member.Name);
+
+					// Handle methods with block logic separately
+					if (expr.Method.Name == "LtreeIsAncestorOrEqual" && expr.Arguments.Count == 2)
+					{
+						var path = Param(Evaluate(expr.Arguments[1])?.ToString());
+						return $"({col} @> {path}::ltree OR {col} = {path}::ltree)";
+					}
+
+					if (expr.Method.Name == "LtreeIsDescendantOrEqual" && expr.Arguments.Count == 2)
+					{
+						var path = Param(Evaluate(expr.Arguments[1])?.ToString());
+						return $"({col} <@ {path}::ltree OR {col} = {path}::ltree)";
+					}
+
+					if (expr.Method.Name == "LtreeContainsAny" && expr.Arguments.Count == 2)
+					{
+						var paths = Evaluate(expr.Arguments[1]) as string[] ?? [];
+						if (paths.Length == 0) return "1 = 0";
+						return $"{col} ? {Param(paths)}";
+					}
+
+					if (expr.Method.Name == "LtreeContainsAll" && expr.Arguments.Count == 2)
+					{
+						var paths = Evaluate(expr.Arguments[1]) as string[] ?? [];
+						if (paths.Length == 0) return "1 = 1";
+						return $"{col} ?& {Param(paths)}";
+					}
+
+					// Simple one-liner methods
+					return expr.Method.Name switch
+					{
+						"LtreeIsAncestorOf" when expr.Arguments.Count == 2 =>
+							$"{col} @> {Param(Evaluate(expr.Arguments[1])?.ToString())}::ltree",
+
+						"LtreeIsDescendantOf" when expr.Arguments.Count == 2 =>
+							$"{col} <@ {Param(Evaluate(expr.Arguments[1])?.ToString())}::ltree",
+
+						"LtreeMatchesLQuery" when expr.Arguments.Count == 2 =>
+							$"{col} ~ {Param(Evaluate(expr.Arguments[1])?.ToString())}::lquery",
+
+						"LtreeMatchesLTxtQuery" when expr.Arguments.Count == 2 =>
+							$"{col} @ {Param(Evaluate(expr.Arguments[1])?.ToString())}::ltxtquery",
+
+						_ => throw new NotSupportedException(
+							$"Ltree method '{expr.Method.Name}' is not supported or has invalid arguments.")
 					};
 				}
 

@@ -81,7 +81,8 @@ public class MyService
 | `[External]` | Property | Excludes property from INSERT/UPDATE/SELECT operations |
 | `[ReadOnly]` | Property | Excludes property from INSERT/UPDATE but includes in SELECT (for computed/generated columns) |
 | `[Write(false)]` | Property | Prevents property from being written to database (equivalent to `[ReadOnly]`) |
-| `[JsonColumn]` | Property | Property is serialized/deserialized as JSON |
+| `[JsonColumn]` | Property | Property is serialized/deserialized as JSON (works in all query methods including `QueryMultipleList`) |
+| `[DbJoin("ForeignKeyProperty")]` | Property | Marks property as a join relationship (excluded from INSERT/UPDATE, metadata available for future integration) |
 | `[Cacheable]` | Class | Enables entity caching with automatic invalidation |
 | `[MultiQuery]` | Class | Marks class as container for multiple result sets |
 | `[ResultSet(index)]` | Property | Maps property to result set index in multi-query |
@@ -883,6 +884,96 @@ calling them directly always throws `InvalidOperationException`.
 .Where(u => u.Name.ILikeEndsWith("son"))         // name ILIKE @p0  ('%son')
 ```
 
+##### PostgreSQL ltree — Hierarchical Data
+
+Extension methods for PostgreSQL ltree extension. Valid inside `.Where()` predicates only.
+Requires `CREATE EXTENSION ltree` in your database.
+
+```csharp
+// Hierarchical operators
+.Where(c => c.Path.LtreeIsAncestorOf("root.electronics.phones"))
+    // path @> 'root.electronics.phones'::ltree
+
+.Where(c => c.Path.LtreeIsDescendantOf("root.electronics"))
+    // path <@ 'root.electronics'::ltree
+
+.Where(c => c.Path.LtreeIsAncestorOrEqual("root.electronics"))
+    // (path @> 'root.electronics'::ltree OR path = 'root.electronics'::ltree)
+
+.Where(c => c.Path.LtreeIsDescendantOrEqual("root.electronics"))
+    // (path <@ 'root.electronics'::ltree OR path = 'root.electronics'::ltree)
+
+// Pattern matching with lquery (wildcards)
+.Where(c => c.Path.LtreeMatchesLQuery("root.*.phones"))
+    // path ~ 'root.*.phones'::lquery
+
+.Where(c => c.Path.LtreeMatchesLQuery("root.{electronics,appliances}.*"))
+    // path ~ 'root.{electronics,appliances}.*'::lquery
+
+// Full-text search with ltxtquery
+.Where(c => c.Path.LtreeMatchesLTxtQuery("electronics & phones"))
+    // path @ 'electronics & phones'::ltxtquery
+
+.Where(c => c.Path.LtreeMatchesLTxtQuery("phones | appliances"))
+    // path @ 'phones | appliances'::ltxtquery
+
+// Array operations
+.Where(c => c.Path.LtreeContainsAny("root.electronics", "root.appliances"))
+    // path ? ARRAY['root.electronics', 'root.appliances']
+
+.Where(c => c.Path.LtreeContainsAll("root", "electronics", "phones"))
+    // path ?& ARRAY['root', 'electronics', 'phones']
+```
+
+**Database Setup:**
+```sql
+-- Enable ltree extension
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+-- Create table with ltree column
+CREATE TABLE categories (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    path LTREE NOT NULL
+);
+
+-- Create index for performance (highly recommended)
+CREATE INDEX idx_categories_path_gist ON categories USING GIST (path);
+-- Or use B-tree for simpler queries
+CREATE INDEX idx_categories_path_btree ON categories USING BTREE (path);
+```
+
+**Complete Example:**
+```csharp
+[Table("categories")]
+public class Category
+{
+    [Key]
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty; // ltree stored as string
+}
+
+// Find all parent categories
+var parents = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsAncestorOf("root.electronics.phones"))
+    .ToListAsync();
+// Returns: root, root.electronics
+
+// Find all subcategories under electronics
+var subcategories = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsDescendantOf("root.electronics"))
+    .ToListAsync();
+// Returns: root.electronics.phones, root.electronics.laptops, etc.
+
+// Find categories matching pattern
+var matches = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeMatchesLQuery("root.*.phones"))
+    .ToListAsync();
+// Returns: root.electronics.phones, root.accessories.phones, etc.
+```
+
+
 ##### Case Folding — LOWER / UPPER
 
 ```csharp
@@ -1367,6 +1458,44 @@ foreach (var order in orders)
 
 // Sync version
 var orders = _db.QueryMultipleList<Order>(sql, new { UserId = userId });
+```
+
+**JSON Column Support:**
+
+`QueryMultipleList` automatically deserializes `[JsonColumn]` properties in both parent and child entities:
+
+```csharp
+[Table("orders")]
+public class Order
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    [JsonColumn]
+    public CustomerData? CustomerData { get; set; }  // ✅ Automatically deserialized
+
+    [ResultSet(1, ForeignKey = "OrderId")]
+    public List<OrderLine> Lines { get; set; } = [];
+}
+
+public class OrderLine
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    public Guid OrderId { get; set; }
+
+    [JsonColumn]
+    public ProductDetails? Details { get; set; }  // ✅ Also deserialized
+}
+
+// Usage - JSON columns work transparently
+var orders = await _db.QueryMultipleListAsync<Order>(
+    "SELECT * FROM orders; SELECT * FROM order_lines;");
+
+// Access deserialized JSON data directly
+var customerName = orders[0].CustomerData?.Name;  // ✅ Works
+var productSku = orders[0].Lines[0].Details?.Sku;  // ✅ Works
 ```
 
 ### ResultSet Attribute Properties

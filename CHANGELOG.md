@@ -1,5 +1,107 @@
 # WebVella.Database Changelog
 
+## [1.5.0] - TBD
+
+### 🚀 Major Features
+
+#### PostgreSQL ltree Extension Support
+Complete support for hierarchical data queries using PostgreSQL's ltree extension:
+- **8 ltree operators** integrated into expression-based queries:
+  - `LtreeIsAncestorOf(path)` → `@>` - Check if path is ancestor
+  - `LtreeIsDescendantOf(path)` → `<@` - Check if path is descendant
+  - `LtreeIsAncestorOrEqual(path)` → `@>` with OR equality
+  - `LtreeIsDescendantOrEqual(path)` → `<@` with OR equality
+  - `LtreeMatchesLQuery(pattern)` → `~` - lquery pattern matching with wildcards
+  - `LtreeMatchesLTxtQuery(query)` → `@` - ltxtquery full-text search
+  - `LtreeContainsAny(paths)` → `?` - Match any of specified paths
+  - `LtreeContainsAll(paths)` → `?&` - Path contains all labels
+- **Type-safe**: Full IntelliSense support with comprehensive XML documentation
+- **Expression-based**: Use ltree methods directly in `.Where()` predicates
+- **Parameterized**: Safe SQL generation with proper type casting (`::ltree`, `::lquery`, `::ltxtquery`)
+- **37 unit tests**: Complete test coverage for all operators and edge cases
+
+**Example:**
+```csharp
+// Find all parent categories
+var parents = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsAncestorOf("root.electronics.phones"))
+    .ToListAsync();
+// SQL: WHERE path @> 'root.electronics.phones'::ltree
+
+// Pattern matching with wildcards
+var items = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeMatchesLQuery("root.*.phones"))
+    .ToListAsync();
+// SQL: WHERE path ~ 'root.*.phones'::lquery
+```
+
+**Database setup:**
+```sql
+CREATE EXTENSION IF NOT EXISTS ltree;
+CREATE INDEX idx_path_gist ON categories USING GIST (path);
+```
+
+See [ltree feature documentation](docs/ltree-feature-summary.md) for complete details and usage examples.
+
+### ✨ Bug Fixes
+
+#### QueryMultipleList JSON Column Support
+- **Fixed**: `QueryMultipleList` and `QueryMultipleListAsync` now properly deserialize `[JsonColumn]` properties
+- **Parent entities**: JSON columns in parent entities are correctly deserialized from JSON strings
+- **Child entities**: JSON columns in child collection items are correctly deserialized
+- **Null-safe**: Graceful handling of null JSON column values
+- **Automatic**: Post-processing happens transparently after Dapper mapping
+- Added `DeserializeJsonColumns` helper method for safe JSON deserialization
+- Added 3 comprehensive tests covering parent/child JSON deserialization and null handling
+
+**Example:**
+```csharp
+// Parent has [JsonColumn] properties, children have [JsonColumn] properties
+var orders = await _db.QueryMultipleListAsync<Order>(
+    "SELECT * FROM orders; SELECT * FROM order_items;");
+
+// Both Order.CustomerData and OrderItem.ProductDetails are properly deserialized
+orders[0].CustomerData.Name // ✅ Works now (was string before)
+orders[0].Items[0].ProductDetails.Price // ✅ Works now (was string before)
+```
+
+### 🚧 Preview Features
+
+#### DbJoin Attribute Infrastructure
+Foundation work for attribute-based relationship declarations (not yet fully integrated):
+- **`[DbJoin]` attribute**: Declare 1:1 and 1:N relationships via attributes
+- **Auto-detection**: Entity metadata detects and tracks join properties
+- **Exclusion logic**: Join properties automatically excluded from INSERT/UPDATE operations
+- **Metadata storage**: `DbJoinPropertyMetadata` stores relationship configuration
+- **SQL builder**: `DbJoinSqlBuilder` helper class for JOIN SQL generation
+- Note: Full Query integration planned for future release
+
+**Example (infrastructure only):**
+```csharp
+[Table("users")]
+public class User
+{
+    [Key]
+    public Guid Id { get; set; }
+    public Guid RoleId { get; set; }
+
+    [DbJoin(nameof(RoleId))]  // ✅ Detected, excluded from writes
+    public Role? Role { get; set; }
+}
+```
+
+### 📝 Documentation
+- Added comprehensive ltree documentation: `docs/ltree-feature-summary.md`
+- Updated `DbExpressionTranslator` XML documentation to include ltree examples
+- All ltree extension methods have detailed XML comments with usage examples
+
+### 🧪 Testing
+- Added `LtreeExtensionTests.cs` with 37 comprehensive tests
+- Added `QueryMultipleListJsonColumnTests.cs` with 3 integration tests
+- All 527 tests passing (up from 524)
+
+---
+
 ## [1.4.0] - 2026-03-28
 
 ### 🚀 Major Changes

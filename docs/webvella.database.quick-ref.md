@@ -156,6 +156,14 @@ var folded     = await _db.Query<User>().Where(u => u.Email.ToLower() == "alice@
 // Collection membership
 var selected = await _db.Query<Order>().Where(o => ids.Contains(o.Id)).ToListAsync();
 
+// PostgreSQL ltree hierarchical data
+var parents = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeIsAncestorOf("root.electronics.phones"))
+    .ToListAsync();
+var matches = await _db.Query<Category>()
+    .Where(c => c.Path.LtreeMatchesLQuery("root.*.phones"))
+    .ToListAsync();
+
 // Page-number pagination
 var page = await _db.Query<Order>()
     .Where(o => o.IsActive)
@@ -173,6 +181,8 @@ var  first  = await _db.Query<User>().Where(u => u.Email == email).FirstOrDefaul
 boolean shorthand · null checks · `.Contains()` `.StartsWith()` `.EndsWith()` (LIKE) ·
 `.ILikeContains()` `.ILikeStartsWith()` `.ILikeEndsWith()` (ILIKE) ·
 `.ToLower()` `.ToUpper()` (LOWER/UPPER) · `list.Contains(e.Prop)` (ANY) ·
+**PostgreSQL ltree:** `.LtreeIsAncestorOf()` `.LtreeIsDescendantOf()` `.LtreeMatchesLQuery()` 
+`.LtreeMatchesLTxtQuery()` `.LtreeContainsAny()` `.LtreeContainsAll()` and more ·
 enum auto-cast to int · captured variables
 
 **Not supported:** arithmetic (`+`,`-`,`*`), `.Trim()`, `.Replace()`, `Math.*`,
@@ -244,12 +254,13 @@ var userCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM users");
 | Feature | Description |
 |---------|-------------|
 | **Fluent Query Builder** | Type-safe `Query<T>()` with WHERE, ORDER BY, LIMIT, OFFSET, COUNT, EXISTS |
+| **PostgreSQL ltree** | Full support for hierarchical data with 8 ltree operators in `.Where()` |
 | **SQL-Free Parent-Child** | `QueryMultipleList<T>()` and `QueryWithJoin<T>()` auto-generate SQL from metadata |
 | **Nested Transactions** | Automatic PostgreSQL savepoint management |
 | **Advisory Locks** | Distributed coordination with simple scopes |
 | **Row Level Security** | Automatic session context for multi-tenancy |
 | **HybridCache Caching** | `[Cacheable]` attribute with async-first caching, tag-based invalidation, and RLS-aware keys |
-| **JSON Columns** | `[JsonColumn]` for automatic serialization |
+| **JSON Columns** | `[JsonColumn]` for automatic serialization (works in all query methods) |
 | **Migrations** | Version-controlled schema changes |
 | **Composite Keys** | Support for multi-column primary keys |
 

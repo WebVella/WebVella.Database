@@ -1044,6 +1044,7 @@ public class DbService : IDbService
 	public List<T> QueryMultipleList<T>(string sql, object? parameters = null) where T : class, new()
 	{
 		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
+		var parentMetadata = EntityMetadata.GetOrCreate<T>();
 
 		using var conn = CreateConnection();
 		var dapperConn = GetDapperConnection(conn);
@@ -1051,6 +1052,15 @@ public class DbService : IDbService
 		using var multi = dapperConn.QueryMultiple(sql, parameters, transaction: null);
 
 		var parents = multi.Read<T>().ToList();
+
+		// Post-process JSON columns for parent entities
+		if (parentMetadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var parent in parents)
+			{
+				DeserializeJsonColumns(parent, parentMetadata);
+			}
+		}
 
 		if (parents.Count == 0)
 			return parents;
@@ -1071,6 +1081,17 @@ public class DbService : IDbService
 				break;
 
 			var children = multi.Read(mapping.ElementType).ToList();
+
+			// Post-process JSON columns for child entities
+			var childMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+			if (childMetadata.JsonColumnProperties.Count > 0)
+			{
+				foreach (var child in children)
+				{
+					DeserializeJsonColumns(child, childMetadata);
+				}
+			}
+
 			var childrenByParent = new Dictionary<object, System.Collections.IList>();
 
 			foreach (var child in children)
@@ -1109,6 +1130,7 @@ public class DbService : IDbService
 	public async Task<List<T>> QueryMultipleListAsync<T>(string sql, object? parameters = null) where T : class, new()
 	{
 		var metadata = MultiQueryListMetadata.GetOrCreate<T>();
+		var parentMetadata = EntityMetadata.GetOrCreate<T>();
 
 		await using var conn = await CreateConnectionAsync();
 		var dapperConn = GetDapperConnection(conn);
@@ -1116,6 +1138,15 @@ public class DbService : IDbService
 		using var multi = await dapperConn.QueryMultipleAsync(sql, parameters, transaction: null);
 
 		var parents = (await multi.ReadAsync<T>()).ToList();
+
+		// Post-process JSON columns for parent entities
+		if (parentMetadata.JsonColumnProperties.Count > 0)
+		{
+			foreach (var parent in parents)
+			{
+				DeserializeJsonColumns(parent, parentMetadata);
+			}
+		}
 
 		if (parents.Count == 0)
 			return parents;
@@ -1136,6 +1167,17 @@ public class DbService : IDbService
 				break;
 
 			var children = (await multi.ReadAsync(mapping.ElementType)).ToList();
+
+			// Post-process JSON columns for child entities
+			var childMetadata = EntityMetadata.GetOrCreate(mapping.ElementType);
+			if (childMetadata.JsonColumnProperties.Count > 0)
+			{
+				foreach (var child in children)
+				{
+					DeserializeJsonColumns(child, childMetadata);
+				}
+			}
+
 			var childrenByParent = new Dictionary<object, System.Collections.IList>();
 
 			foreach (var child in children)
@@ -2746,6 +2788,63 @@ public class DbService : IDbService
 		}
 
 		return (entity, updatedPropertyNames.ToArray());
+	}
+
+	/// <summary>
+	/// Deserializes JSON column properties on an entity from JSON strings to their actual types.
+	/// This is needed when Dapper's type handlers don't process JSON columns automatically
+	/// (e.g., in QueryMultiple scenarios).
+	/// </summary>
+	/// <param name="entity">The entity instance to process.</param>
+	/// <param name="metadata">The entity metadata containing JSON column information.</param>
+	private static void DeserializeJsonColumns(object entity, EntityMetadata metadata)
+	{
+		if (metadata.JsonColumnProperties.Count == 0)
+			return;
+
+		var properties = entity.GetType().GetProperties(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+		foreach (var prop in properties)
+		{
+			if (!metadata.IsJsonColumn(prop.Name))
+				continue;
+
+			if (!prop.CanRead || !prop.CanWrite)
+				continue;
+
+			var currentValue = prop.GetValue(entity);
+
+			// If value is null or DBNull, skip
+			if (currentValue is null or DBNull)
+				continue;
+
+			// If value is already the correct type (not a string), skip
+			if (currentValue.GetType() == prop.PropertyType)
+				continue;
+
+			// If value is a string (JSON), deserialize it
+			if (currentValue is string jsonString && !string.IsNullOrWhiteSpace(jsonString))
+			{
+				try
+				{
+					var deserializedValue = System.Text.Json.JsonSerializer.Deserialize(
+						jsonString,
+						prop.PropertyType,
+						new System.Text.Json.JsonSerializerOptions
+						{
+							PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+						});
+
+					prop.SetValue(entity, deserializedValue);
+				}
+				catch (System.Text.Json.JsonException)
+				{
+					// If deserialization fails, leave the original value
+					// This allows graceful degradation
+				}
+			}
+		}
 	}
 
 	#endregion
