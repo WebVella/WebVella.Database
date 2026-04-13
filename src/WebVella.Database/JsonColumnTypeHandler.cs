@@ -1,9 +1,10 @@
+using Dapper;
+using NpgsqlTypes;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Reflection;
 using System.Text.Json;
-using Dapper;
-using NpgsqlTypes;
+using System.Text.Json.Serialization;
 
 namespace WebVella.Database;
 
@@ -13,48 +14,116 @@ namespace WebVella.Database;
 /// Uses PostgreSQL's JSONB type for storage.
 /// </summary>
 /// <typeparam name="T">The type of the object to serialize/deserialize.</typeparam>
-public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T>
+public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 {
 	private static readonly JsonSerializerOptions _jsonOptions = new()
 	{
+		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+		PropertyNameCaseInsensitive = true,
 		WriteIndented = false
 	};
 
-	/// <inheritdoc/>
 	public override T? Parse(object value)
 	{
-		if (value is null or DBNull)
-			return default;
+		if (value is null or DBNull) return default;
 
 		var json = value.ToString();
-		if (string.IsNullOrEmpty(json))
-			return default;
+		if (string.IsNullOrEmpty(json)) return default;
 
-		return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+		try
+		{
+			// Standard attempt (Works if $type is at the start)
+			return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+		}
+		catch (JsonException)
+		{
+			// Fallback for metadata placement and polymorphic instantiation
+			return ManualPolymorphicParse(json);
+		}
 	}
 
-	/// <inheritdoc/>
-	public override void SetValue(IDbDataParameter parameter, T? value)
+	private T? ManualPolymorphicParse(string json)
 	{
-		if (value is null)
+		using var doc = JsonDocument.Parse(json);
+		var root = doc.RootElement;
+
+		// 1. Determine the actual type to create
+		Type targetType = typeof(T);
+		if (root.TryGetProperty("$type", out var typeDiscriminator))
 		{
-			parameter.Value = DBNull.Value;
-		}
-		else
-		{
-			parameter.Value = JsonSerializer.Serialize(value, _jsonOptions);
+			var discriminator = typeDiscriminator.GetString();
+
+			// Look for [JsonDerivedType] attributes on the base class
+			var derivedAttr = typeof(T).GetCustomAttributes<JsonDerivedTypeAttribute>()
+				.FirstOrDefault(a => a.TypeDiscriminator?.ToString() == discriminator);
+
+			if (derivedAttr != null)
+			{
+				targetType = derivedAttr.DerivedType;
+			}
 		}
 
-		// Set NpgsqlDbType to Jsonb for proper PostgreSQL JSONB handling
+		var result = Activator.CreateInstance(targetType) as T;
+		if (result == null) return null;
+
+		var properties = targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+		foreach (var prop in properties)
+		{
+			var attr = prop.GetCustomAttribute<JsonPropertyNameAttribute>();
+			string jsonKey = attr?.Name ?? prop.Name;
+
+			if (TryGetElement(root, jsonKey, out var element) && element.ValueKind != JsonValueKind.Null)
+			{
+				var pType = prop.PropertyType;
+				var underlying = Nullable.GetUnderlyingType(pType) ?? pType;
+
+				object? val;
+				if (underlying.IsEnum)
+				{
+					if (Enum.TryParse(underlying, element.ToString(), true, out var enumRes))
+						val = enumRes;
+					else
+						val = JsonSerializer.Deserialize(element.GetRawText(), pType, _jsonOptions);
+				}
+				else
+				{
+					val = JsonSerializer.Deserialize(element.GetRawText(), pType, _jsonOptions);
+				}
+
+				prop.SetValue(result, val);
+			}
+		}
+
+		return result;
+	}
+
+	private static bool TryGetElement(JsonElement root, string name, out JsonElement element)
+	{
+		if (root.TryGetProperty(name, out element))
+			return true;
+
+		foreach (var property in root.EnumerateObject())
+		{
+			if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+			{
+				element = property.Value;
+				return true;
+			}
+		}
+
+		element = default;
+		return false;
+	}
+
+	public override void SetValue(IDbDataParameter parameter, T? value)
+	{
+		parameter.Value = value is null ? DBNull.Value : JsonSerializer.Serialize(value, _jsonOptions);
+
 		if (parameter is Npgsql.NpgsqlParameter npgsqlParameter)
-		{
 			npgsqlParameter.NpgsqlDbType = NpgsqlDbType.Jsonb;
-		}
 		else
-		{
 			parameter.DbType = DbType.String;
-		}
 	}
 }
 
