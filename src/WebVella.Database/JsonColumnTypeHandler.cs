@@ -21,7 +21,8 @@ public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
 		PropertyNameCaseInsensitive = true,
-		WriteIndented = false
+		WriteIndented = false,
+		AllowOutOfOrderMetadataProperties = true
 	};
 
 	public override T? Parse(object value)
@@ -50,7 +51,12 @@ public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 
 		// 1. Determine the actual type to create
 		Type targetType = typeof(T);
-		if (root.TryGetProperty("$type", out var typeDiscriminator))
+
+		// FIX: Dynamically read the custom property discriminator name from [JsonPolymorphic]
+		var polymorphicAttr = typeof(T).GetCustomAttribute<JsonPolymorphicAttribute>();
+		string discriminatorPropertyName = polymorphicAttr?.TypeDiscriminatorPropertyName ?? "$type";
+
+		if (root.TryGetProperty(discriminatorPropertyName, out var typeDiscriminator))
 		{
 			var discriminator = typeDiscriminator.GetString();
 
