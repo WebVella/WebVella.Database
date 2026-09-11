@@ -334,6 +334,40 @@ public class DbMigrationIntegrationTests : IAsyncLifetime
 		count.Should().Be(1, "script path migration should insert data from explicit resource");
 	}
 
+	[Fact]
+	public async Task ExecutePendingMigrationsAsync_ShouldExecuteFunctionMigrationWithIfStatements()
+	{
+		var isolatedDbService = _fixture.CreateIsolatedDbService();
+		var options = new DbMigrationOptions();
+		var migrationService = new DbMigrationService(_fixture.ServiceProvider, isolatedDbService, options);
+
+		await migrationService.ExecutePendingMigrationsAsync();
+
+		var count = await isolatedDbService.ExecuteScalarAsync<long>(
+			"SELECT COUNT(*) FROM test_migration_table WHERE name = 'Function IF Item'");
+
+		count.Should().Be(1, "function migration should handle IF blocks with internal semicolons");
+	}
+
+	[Fact]
+	public async Task ExecutePendingMigrationsAsync_ShouldExecuteTriggerFunctionMigration()
+	{
+		var isolatedDbService = _fixture.CreateIsolatedDbService();
+		var options = new DbMigrationOptions();
+		var migrationService = new DbMigrationService(_fixture.ServiceProvider, isolatedDbService, options);
+
+		await migrationService.ExecutePendingMigrationsAsync();
+
+		var functionExists = await isolatedDbService.ExecuteScalarAsync<bool>("""
+			SELECT EXISTS (
+				SELECT FROM pg_proc
+				WHERE proname = 'fn_do_something'
+			);
+			""");
+
+		functionExists.Should().BeTrue("trigger function migration should execute successfully");
+	}
+
 	#endregion
 
 	#region <=== DbMigration Tests ===>

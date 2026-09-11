@@ -59,7 +59,7 @@ public class DbMigrationService : IDbMigrationService
 
 	private const string FUNCTION_CREATE_WRAPPER_TEMPLATE = @"
 		CREATE OR REPLACE FUNCTION $$$FUNCTION_NAME$$$() 
-		RETURNS TABLE(version TEXT, statement TEXT, success BOOL, sql_error TEXT) AS $$ 
+		RETURNS TABLE(version TEXT, statement TEXT, success BOOL, sql_error TEXT) AS $$$FUNCTION_DELIMITER$$$ 
 		DECLARE 
 			error_occurred bool; 
 		BEGIN 
@@ -67,14 +67,14 @@ public class DbMigrationService : IDbMigrationService
 			$$$FUNCTION_BODY$$$ 
 			RETURN QUERY SELECT * FROM $$$LOG_TABLE$$$; 
 		END; 
-		$$ LANGUAGE plpgsql;";
+		$$$FUNCTION_DELIMITER$$$ LANGUAGE plpgsql;";
 
 	private const string FUNCTION_EXECUTE_TEMPLATE = @"SELECT * FROM $$$FUNCTION_NAME$$$();";
 
 	private const string STATEMENT_WRAPPER_TEMPLATE = @"
 		IF not error_occurred THEN 
 			BEGIN 
-				$$$STATEMENT$$$ 
+				EXECUTE '$$$STATEMENT_ENCODED$$$'; 
 				INSERT INTO $$$LOG_TABLE$$$(version, statement, success, sql_error) 
 				VALUES('$$$VERSION$$$', '$$$STATEMENT_ENCODED$$$', TRUE, null); 
 			EXCEPTION WHEN OTHERS THEN 
@@ -146,8 +146,7 @@ public class DbMigrationService : IDbMigrationService
 
 				if (!string.IsNullOrWhiteSpace(rawSql))
 				{
-					var statements = Regex.Split(rawSql, @"(?<=[;])\s*[\r\n]+", RegexOptions.Multiline)
-						.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+					var statements = SplitSqlStatements(rawSql);
 
 					var functionBody = new StringBuilder();
 					foreach (var statement in statements)
@@ -158,17 +157,18 @@ public class DbMigrationService : IDbMigrationService
 						var wrapped = STATEMENT_WRAPPER_TEMPLATE
 							.Replace("$$$LOG_TABLE$$$", _updateLogTableName)
 							.Replace("$$$VERSION$$$", migration.Version.ToString())
-							.Replace("$$$STATEMENT$$$", clean)
 							.Replace("$$$STATEMENT_ENCODED$$$", clean.Replace("'", "''"));
 						functionBody.AppendLine(wrapped);
 					}
 
 					if (functionBody.Length > 0)
 					{
+					var functionDelimiter = CreateDollarQuoteDelimiter(functionBody.ToString());
 						await _db.ExecuteAsync(
 							FUNCTION_CREATE_WRAPPER_TEMPLATE
 								.Replace("$$$FUNCTION_NAME$$$", _updateFunctionName)
 								.Replace("$$$LOG_TABLE$$$", _updateLogTableName)
+							.Replace("$$$FUNCTION_DELIMITER$$$", functionDelimiter)
 								.Replace("$$$FUNCTION_BODY$$$", functionBody.ToString()));
 
 						var functionExecuteSql = FUNCTION_EXECUTE_TEMPLATE
@@ -279,6 +279,197 @@ public class DbMigrationService : IDbMigrationService
 	{
 		var sql = "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory';";
 		await _db.ExecuteAsync(sql);
+	}
+
+	/// <summary>
+	/// Splits raw SQL into executable statements while preserving semicolons inside quoted strings,
+	/// comments, and dollar-quoted PostgreSQL function bodies.
+	/// </summary>
+	private static List<string> SplitSqlStatements(string rawSql)
+	{
+		var statements = new List<string>();
+		var current = new StringBuilder();
+		string? dollarQuoteTag = null;
+		var inSingleQuote = false;
+		var inDoubleQuote = false;
+		var inLineComment = false;
+		var inBlockComment = false;
+
+		for (var i = 0; i < rawSql.Length; i++)
+		{
+			var c = rawSql[i];
+			var next = i + 1 < rawSql.Length ? rawSql[i + 1] : '\0';
+
+			if (inLineComment)
+			{
+				current.Append(c);
+				if (c == '\n') inLineComment = false;
+				continue;
+			}
+
+			if (inBlockComment)
+			{
+				current.Append(c);
+				if (c == '*' && next == '/')
+				{
+					current.Append(next);
+					i++;
+					inBlockComment = false;
+				}
+
+				continue;
+			}
+
+			if (dollarQuoteTag != null)
+			{
+				if (IsDollarQuoteAt(rawSql, i, dollarQuoteTag))
+				{
+					current.Append(dollarQuoteTag);
+					i += dollarQuoteTag.Length - 1;
+					dollarQuoteTag = null;
+				}
+				else
+				{
+					current.Append(c);
+				}
+
+				continue;
+			}
+
+			if (inSingleQuote)
+			{
+				current.Append(c);
+				if (c == '\'' && next == '\'')
+				{
+					current.Append(next);
+					i++;
+				}
+				else if (c == '\'')
+				{
+					inSingleQuote = false;
+				}
+
+				continue;
+			}
+
+			if (inDoubleQuote)
+			{
+				current.Append(c);
+				if (c == '"' && next == '"')
+				{
+					current.Append(next);
+					i++;
+				}
+				else if (c == '"')
+				{
+					inDoubleQuote = false;
+				}
+
+				continue;
+			}
+
+			if (c == '-' && next == '-')
+			{
+				current.Append(c);
+				current.Append(next);
+				i++;
+				inLineComment = true;
+				continue;
+			}
+
+			if (c == '/' && next == '*')
+			{
+				current.Append(c);
+				current.Append(next);
+				i++;
+				inBlockComment = true;
+				continue;
+			}
+
+			if (c == '\'')
+			{
+				current.Append(c);
+				inSingleQuote = true;
+				continue;
+			}
+
+			if (c == '"')
+			{
+				current.Append(c);
+				inDoubleQuote = true;
+				continue;
+			}
+
+			if (c == '$' && TryReadDollarQuoteTag(rawSql, i, out var tag))
+			{
+				current.Append(tag);
+				i += tag.Length - 1;
+				dollarQuoteTag = tag;
+				continue;
+			}
+
+			if (c == ';')
+			{
+				current.Append(c);
+				var statement = current.ToString().Trim();
+				if (!string.IsNullOrWhiteSpace(statement))
+					statements.Add(statement);
+				current.Clear();
+				continue;
+			}
+
+			current.Append(c);
+		}
+
+		var lastStatement = current.ToString().Trim();
+		if (!string.IsNullOrWhiteSpace(lastStatement))
+			statements.Add(lastStatement.EndsWith(';') ? lastStatement : lastStatement + ';');
+
+		return statements;
+	}
+
+	private static bool TryReadDollarQuoteTag(string sql, int startIndex, out string tag)
+	{
+		tag = string.Empty;
+
+		if (sql[startIndex] != '$')
+			return false;
+
+		var endIndex = startIndex + 1;
+		while (endIndex < sql.Length && sql[endIndex] != '$')
+		{
+			var ch = sql[endIndex];
+			if (!char.IsLetterOrDigit(ch) && ch != '_')
+				return false;
+
+			endIndex++;
+		}
+
+		if (endIndex >= sql.Length)
+			return false;
+
+		tag = sql.Substring(startIndex, endIndex - startIndex + 1);
+		return true;
+	}
+
+	private static bool IsDollarQuoteAt(string sql, int index, string tag)
+	{
+		if (index + tag.Length > sql.Length)
+			return false;
+
+		return sql.AsSpan(index, tag.Length).SequenceEqual(tag);
+	}
+
+	private static string CreateDollarQuoteDelimiter(string content)
+	{
+		string delimiter;
+		do
+		{
+			delimiter = "$wvb_" + Guid.NewGuid().ToString("N") + "$";
+		}
+		while (content.Contains(delimiter, StringComparison.Ordinal));
+
+		return delimiter;
 	}
 
 	/// <summary>
