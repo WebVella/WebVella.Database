@@ -28,10 +28,7 @@ public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 	public override T? Parse(object value)
 	{
 		if (value is null or DBNull) return default;
-		if (typeof(T) == typeof(string))
-		{
-			return value as T;
-		}
+
 		var json = value.ToString();
 		if (string.IsNullOrEmpty(json)) return default;
 
@@ -40,7 +37,7 @@ public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 			// Standard attempt (Works if $type is at the start)
 			return JsonSerializer.Deserialize<T>(json, _jsonOptions);
 		}
-		catch (JsonException)
+		catch (Exception ex)
 		{
 			// Fallback for metadata placement and polymorphic instantiation
 			return ManualPolymorphicParse(json);
@@ -159,6 +156,9 @@ public static class JsonColumnTypeHandlerExtensions
 	/// <param name="type">The type to register as a JSON column.</param>
 	public static void RegisterJsonColumnType(Type type)
 	{
+		if (type == typeof(string))
+			return;
+
 		if (_registeredTypes.TryAdd(type, true))
 		{
 			var handlerType = typeof(JsonColumnTypeHandler<>).MakeGenericType(type);
@@ -192,6 +192,9 @@ public static class JsonColumnTypeHandlerExtensions
 			// Handle nullable types - get the underlying type
 			var typeToRegister = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
 
+			if (typeToRegister == typeof(string))
+				continue;
+
 			RegisterJsonColumnType(typeToRegister);
 		}
 	}
@@ -207,6 +210,8 @@ public static class JsonColumnTypeHandlerExtensions
 
 		foreach (var entityType in entityTypes)
 		{
+			if (entityType == typeof(string))
+				continue;
 			RegisterJsonColumnsFromEntity(entityType);
 		}
 	}
