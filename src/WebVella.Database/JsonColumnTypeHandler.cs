@@ -28,7 +28,10 @@ public class JsonColumnTypeHandler<T> : SqlMapper.TypeHandler<T> where T : class
 	public override T? Parse(object value)
 	{
 		if (value is null or DBNull) return default;
-
+		if (typeof(T) == typeof(string))
+		{
+			return value as T;
+		}
 		var json = value.ToString();
 		if (string.IsNullOrEmpty(json)) return default;
 
